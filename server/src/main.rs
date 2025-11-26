@@ -6,6 +6,8 @@ use std::{
 use base64::Engine as _;
 use rand::RngCore;
 use rocket::{fs::NamedFile, routes};
+use rocket_dyn_templates::Template;
+use serde::Serialize;
 
 pub const RUN_DIR: &'static str = "./run";
 pub const SALT_FILE: &'static str = "./run/salt";
@@ -24,9 +26,40 @@ fn load_or_generate_salt() -> String {
 }
 
 #[rocket::get("/")]
-async fn index() -> Option<NamedFile> {
-    let path = Path::new("static").join("index.html");
+async fn index() -> Template {
+    #[derive(Serialize)]
+    struct IndexPageContext<'a> {
+        username: &'a str,
+        links: Vec<LinkContext<'a>>,
+    }
 
+    #[derive(Serialize)]
+    struct LinkContext<'a> {
+        name: &'a str,
+        url: &'a str,
+    }
+
+    Template::render(
+        "index",
+        IndexPageContext {
+            username: "Someone",
+            links: vec![
+                LinkContext {
+                    name: "GitHub",
+                    url: "https://www.github.com",
+                },
+                LinkContext {
+                    name: "Google",
+                    url: "https://www.google.com",
+                },
+            ],
+        },
+    )
+}
+
+#[rocket::get("/about")]
+async fn about() -> Option<NamedFile> {
+    let path = Path::new("static").join("about.html");
     NamedFile::open(path).await.ok()
 }
 
@@ -38,7 +71,14 @@ async fn main() -> Result<(), rocket::Error> {
         .expect("failed to create run dir");
     let _salt = load_or_generate_salt();
 
-    rocket::build().mount("/", routes![index]).launch().await?;
+    // let rocket_config = rocket::Config::figment().merge(("template_dir", "static/"));
+    // rocket::custom(&rocket_config)
+
+    rocket::build()
+        .mount("/", routes![index, about])
+        .attach(Template::fairing())
+        .launch()
+        .await?;
 
     Ok(())
 }

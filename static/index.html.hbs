@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Code-Quest</title>
+    </head>
+    <body>
+        <h1>Code-Quest</h1>
+        <p>Welcome to Code-Quest, {{username}}!</p>
+
+        <h2>Available quests:</h2>
+        <ul>
+            {{#each links}}
+                <li><a href="{{url}}">{{name}}</a></li>
+            {{/each}}
+        </ul>
+    </body>
+</html>

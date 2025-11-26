@@ -6,3 +6,4 @@ members = ["server"]
 rocket = "0.5"
 base64 = "0.22"
 rand = "0.9"
+serde = "1.0"
