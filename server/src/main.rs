@@ -10,10 +10,11 @@ use argon2::{
     password_hash::{SaltString, rand_core::OsRng},
 };
 use rocket::{
-    State, async_trait,
+    Request, State, async_trait,
     form::{Form, FromForm},
     fs::NamedFile,
-    http::CookieJar,
+    http::{self, Cookie, CookieJar},
+    request::{FromRequest, Outcome},
     response::Redirect,
     routes,
     tokio::sync::RwLock,
@@ -123,12 +124,16 @@ struct SignupForm<'a> {
 #[rocket::post("/signup", data = "<form>")]
 async fn signup(
     form: Form<SignupForm<'_>>,
+    jar: &CookieJar<'_>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Redirect {
-    if user_service.add_user(form.username, form.password).await {
-        todo!("successful signup");
+    let SignupForm { username, password } = *form;
+
+    if user_service.add_user(username, password).await {
+        jar.add_private(Cookie::new("user_id", username.to_owned()));
+        Redirect::to("/")
     } else {
-        todo!("failed to sign up");
+        Redirect::to("/signup?error")
     }
 }
 
@@ -141,14 +146,13 @@ struct LoginForm<'a> {
 #[rocket::post("/login", data = "<form>")]
 async fn login(
     form: Form<LoginForm<'_>>,
-    _jar: &CookieJar<'_>,
+    jar: &CookieJar<'_>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Redirect {
-    if user_service
-        .verify_password(&form.username, &form.password)
-        .await
-    {
-        todo!();
+    let LoginForm { username, password } = *form;
+
+    if user_service.verify_password(username, password).await {
+        jar.add_private(Cookie::new("user_id", username.to_owned()));
         Redirect::to("/")
     } else {
         Redirect::to("/login?error")
@@ -162,15 +166,41 @@ async fn about() -> Option<NamedFile> {
 }
 
 #[rocket::get("/signup")]
-async fn signup_page() -> Option<NamedFile> {
+async fn signup_page(user: Option<AuthUser>) -> Result<Option<NamedFile>, Redirect> {
+    if user.is_some() {
+        return Err(Redirect::to("/"));
+    }
     let path = Path::new("static").join("signup.html");
-    NamedFile::open(path).await.ok()
+    Ok(NamedFile::open(path).await.ok())
 }
 
 #[rocket::get("/login")]
-async fn login_page() -> Option<NamedFile> {
+async fn login_page(user: Option<AuthUser>) -> Result<Option<NamedFile>, Redirect> {
+    if user.is_some() {
+        return Err(Redirect::to("/"));
+    }
     let path = Path::new("static").join("login.html");
-    NamedFile::open(path).await.ok()
+    Ok(NamedFile::open(path).await.ok())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct AuthUser {
+    username: String,
+}
+
+#[async_trait]
+impl<'r> FromRequest<'r> for AuthUser {
+    type Error = ();
+    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let jar = request.cookies();
+
+        if let Some(cookie) = jar.get_private("user_id") {
+            let username = cookie.value().to_owned();
+            return Outcome::Success(AuthUser { username });
+        }
+
+        Outcome::Error((http::Status::Unauthorized, ()))
+    }
 }
 
 #[rocket::main]

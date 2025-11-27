@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rocket = { workspace = true }
+rocket = { workspace = true, features = ["secrets"] }
 rocket_dyn_templates = { version = "0.2", features = ["handlebars"] }
 serde = { workspace = true }
 argon2 = { workspace = true }
