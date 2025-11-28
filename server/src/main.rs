@@ -244,6 +244,7 @@ async fn main() -> Result<(), rocket::Error> {
                 pages::login,
                 pages::stylesheet,
                 pages::quests,
+                pages::quest,
                 login,
                 signup,
                 logout,
