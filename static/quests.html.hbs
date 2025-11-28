@@ -1,0 +1,11 @@
+{{#*inline "body"}}
+    <h1>Quests</h1>
+
+    <div class="card-grid">
+        {{#each quests}}
+            <a class="card" href="{{uri}}">{{name}}</a>
+        {{/each}}
+    </div>
+{{/inline}}
+
+{{> base title="Quests - Code-Quest" user=user active-quests=true }}

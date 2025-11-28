@@ -55,7 +55,35 @@ pub async fn stylesheet() -> Option<NamedFile> {
     NamedFile::open(path).await.ok()
 }
 
-#[rocket::get("/puzzles")]
-pub async fn puzzles(user: Option<AuthUser>) -> Template {
-    Template::render("puzzles", PageContext::new(&user))
+#[derive(Serialize)]
+struct QuestsPageContext<'a> {
+    #[serde(flatten)]
+    general: PageContext<'a>,
+    quests: Vec<QuestContext>,
+}
+
+#[derive(Serialize)]
+struct QuestContext {
+    name: String,
+    uri: String,
+}
+
+#[rocket::get("/quests")]
+pub async fn quests(user: Option<AuthUser>) -> Template {
+    Template::render(
+        "quests",
+        QuestsPageContext {
+            general: PageContext::new(&user),
+            quests: vec![
+                QuestContext {
+                    name: "Quest 1".to_owned(),
+                    uri: "/quest/day-01".to_owned(),
+                },
+                QuestContext {
+                    name: "Quest 2".to_owned(),
+                    uri: "/quest/day-02".to_owned(),
+                },
+            ],
+        },
+    )
 }
