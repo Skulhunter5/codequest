@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fs::{self, DirBuilder},
-    path::Path,
     sync::Arc,
 };
 
@@ -12,15 +11,17 @@ use argon2::{
 use rocket::{
     Request, State, async_trait,
     form::{Form, FromForm},
-    fs::NamedFile,
     http::{self, Cookie, CookieJar},
     request::{FromRequest, Outcome},
     response::Redirect,
     routes,
+    serde::json::Json,
     tokio::sync::RwLock,
 };
 use rocket_dyn_templates::Template;
 use serde::Serialize;
+
+mod pages;
 
 pub const RUN_DIR: &'static str = "./run";
 pub const SALT_FILE: &'static str = "./run/salt";
@@ -33,38 +34,6 @@ fn load_or_generate_salt() -> SaltString {
     let salt = SaltString::generate(&mut OsRng);
     fs::write(&SALT_FILE, salt.as_str()).expect("failed to write salt to file");
     return salt;
-}
-
-#[rocket::get("/")]
-async fn index() -> Template {
-    #[derive(Serialize)]
-    struct IndexPageContext<'a> {
-        username: &'a str,
-        links: Vec<LinkContext<'a>>,
-    }
-
-    #[derive(Serialize)]
-    struct LinkContext<'a> {
-        name: &'a str,
-        url: &'a str,
-    }
-
-    Template::render(
-        "index",
-        IndexPageContext {
-            username: "Someone",
-            links: vec![
-                LinkContext {
-                    name: "GitHub",
-                    url: "https://www.github.com",
-                },
-                LinkContext {
-                    name: "Google",
-                    url: "https://www.google.com",
-                },
-            ],
-        },
-    )
 }
 
 #[async_trait]
@@ -115,77 +84,9 @@ impl UserService for InMemoryUserService {
     }
 }
 
-#[derive(FromForm)]
-struct SignupForm<'a> {
-    username: &'a str,
-    password: &'a str,
-}
-
-#[rocket::post("/signup", data = "<form>")]
-async fn signup(
-    form: Form<SignupForm<'_>>,
-    jar: &CookieJar<'_>,
-    user_service: &State<Arc<dyn UserService>>,
-) -> Redirect {
-    let SignupForm { username, password } = *form;
-
-    if user_service.add_user(username, password).await {
-        jar.add_private(Cookie::new("user_id", username.to_owned()));
-        Redirect::to("/")
-    } else {
-        Redirect::to("/signup?error")
-    }
-}
-
-#[derive(FromForm)]
-struct LoginForm<'a> {
-    username: &'a str,
-    password: &'a str,
-}
-
-#[rocket::post("/login", data = "<form>")]
-async fn login(
-    form: Form<LoginForm<'_>>,
-    jar: &CookieJar<'_>,
-    user_service: &State<Arc<dyn UserService>>,
-) -> Redirect {
-    let LoginForm { username, password } = *form;
-
-    if user_service.verify_password(username, password).await {
-        jar.add_private(Cookie::new("user_id", username.to_owned()));
-        Redirect::to("/")
-    } else {
-        Redirect::to("/login?error")
-    }
-}
-
-#[rocket::get("/about")]
-async fn about() -> Option<NamedFile> {
-    let path = Path::new("static").join("about.html");
-    NamedFile::open(path).await.ok()
-}
-
-#[rocket::get("/signup")]
-async fn signup_page(user: Option<AuthUser>) -> Result<Option<NamedFile>, Redirect> {
-    if user.is_some() {
-        return Err(Redirect::to("/"));
-    }
-    let path = Path::new("static").join("signup.html");
-    Ok(NamedFile::open(path).await.ok())
-}
-
-#[rocket::get("/login")]
-async fn login_page(user: Option<AuthUser>) -> Result<Option<NamedFile>, Redirect> {
-    if user.is_some() {
-        return Err(Redirect::to("/"));
-    }
-    let path = Path::new("static").join("login.html");
-    Ok(NamedFile::open(path).await.ok())
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct AuthUser {
-    username: String,
+pub(crate) struct AuthUser {
+    pub(crate) username: String,
 }
 
 #[async_trait]
@@ -203,6 +104,125 @@ impl<'r> FromRequest<'r> for AuthUser {
     }
 }
 
+#[rocket::get("/logout")]
+async fn logout(jar: &CookieJar<'_>) -> Redirect {
+    jar.remove_private("user_id");
+    Redirect::to("/")
+}
+
+#[derive(FromForm)]
+struct SignupForm<'a> {
+    username: &'a str,
+    password: &'a str,
+}
+
+#[derive(Serialize)]
+
+struct SignupResponse {
+    success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl SignupResponse {
+    fn success(redirect: String) -> Self {
+        Self {
+            success: true,
+            redirect: Some(redirect),
+            error: None,
+        }
+    }
+
+    fn error(error: String) -> Self {
+        Self {
+            success: false,
+            redirect: None,
+            error: Some(error),
+        }
+    }
+}
+
+#[rocket::post("/signup", data = "<form>")]
+async fn signup(
+    form: Form<SignupForm<'_>>,
+    jar: &CookieJar<'_>,
+    user_service: &State<Arc<dyn UserService>>,
+) -> (http::Status, Json<SignupResponse>) {
+    let SignupForm { username, password } = *form;
+
+    if user_service.add_user(username, password).await {
+        jar.add_private(Cookie::new("user_id", username.to_owned()));
+        (
+            http::Status::Ok,
+            Json(SignupResponse::success("/".to_owned())),
+        )
+    } else {
+        (
+            http::Status::Unauthorized,
+            Json(SignupResponse::error("Username already taken".to_owned())),
+        )
+    }
+}
+
+#[derive(FromForm)]
+struct LoginForm<'a> {
+    username: &'a str,
+    password: &'a str,
+}
+
+#[derive(Serialize)]
+struct LoginResponse {
+    success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl LoginResponse {
+    fn success(redirect: String) -> Self {
+        Self {
+            success: true,
+            redirect: Some(redirect),
+            error: None,
+        }
+    }
+
+    fn error(error: String) -> Self {
+        Self {
+            success: false,
+            redirect: None,
+            error: Some(error),
+        }
+    }
+}
+
+#[rocket::post("/login", data = "<form>")]
+async fn login(
+    form: Form<LoginForm<'_>>,
+    jar: &CookieJar<'_>,
+    user_service: &State<Arc<dyn UserService>>,
+) -> (http::Status, Json<LoginResponse>) {
+    let LoginForm { username, password } = *form;
+
+    if user_service.verify_password(username, password).await {
+        jar.add_private(Cookie::new("user_id", username.to_owned()));
+        (
+            http::Status::Ok,
+            Json(LoginResponse::success("/".to_owned())),
+        )
+    } else {
+        (
+            http::Status::Unauthorized,
+            Json(LoginResponse::error(
+                "Invalid username or password".to_owned(),
+            )),
+        )
+    }
+}
+
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     DirBuilder::new()
@@ -217,7 +237,17 @@ async fn main() -> Result<(), rocket::Error> {
     rocket::build()
         .mount(
             "/",
-            routes![index, about, login_page, login, signup_page, signup],
+            routes![
+                pages::index,
+                pages::about,
+                pages::signup,
+                pages::login,
+                pages::stylesheet,
+                pages::puzzles,
+                login,
+                signup,
+                logout,
+            ],
         )
         .attach(Template::fairing())
         .manage(Arc::new(InMemoryUserService::new(salt)) as Arc<dyn UserService>)

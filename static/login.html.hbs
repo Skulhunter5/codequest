@@ -1,0 +1,46 @@
+{{#*inline "body"}}
+    <h1>Log In</h1>
+
+    <form id="login-form" class="form-box" method="POST" action="/login">
+        <div id="error-box" class="error" style="display:none;"></div>
+
+        <label>Username</label>
+        <input type="text" name="username" required>
+
+        <label>Password</label>
+        <input type="password" name="password" required>
+
+        <button type="submit" class="submit-btn">Log In</button>
+    </form>
+
+    <script>
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+        e.preventDefault(); // stop normal form submission
+
+        const form = e.target;
+        const formData = new FormData(form);
+
+        const response = await fetch("/login", {
+            method: "POST",
+            body: formData,
+            credentials: "include",
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            window.location.href = data.redirect;
+            return;
+        } else {
+            const errorText = data.error;
+            const errorBox = document.getElementById("error-box");
+            errorBox.textContent = errorText || "Unknown error.";
+            errorBox.style.display = "block";
+            form.elements.password.value = "";
+            return;
+        }
+    });
+    </script>
+{{/inline}}
+
+{{> base title="Log In - Code-Quest" user=user }}
