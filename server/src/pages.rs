@@ -1,10 +1,10 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
-use rocket::{fs::NamedFile, http, response::Redirect};
+use rocket::{State, fs::NamedFile, http, response::Redirect};
 use rocket_dyn_templates::Template;
 use serde::Serialize;
 
-use crate::AuthUser;
+use crate::{AuthUser, Quest, services::QuestService};
 
 #[derive(Serialize)]
 struct PageContext<'a, MainContext: Serialize> {
@@ -83,13 +83,17 @@ struct QuestContext<'a> {
 }
 
 #[rocket::get("/quests")]
-pub async fn quests(user: Option<AuthUser>) -> Template {
+pub async fn quests(
+    user: Option<AuthUser>,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Template {
     Template::render(
         "quests",
         PageContext::new(
             &user,
             QuestsPageContext {
-                quests: QUESTS
+                quests: quest_service
+                    .get_quests()
                     .iter()
                     .map(|quest| QuestContext::from(quest))
                     .collect::<Vec<_>>(),
@@ -112,33 +116,13 @@ impl<'a> From<&Quest<'a>> for QuestContext<'a> {
     }
 }
 
-struct Quest<'a> {
-    name: &'a str,
-    id: &'a str,
-}
-
-static QUESTS: &[Quest] = &[
-    Quest {
-        name: "Quest 1",
-        id: "quest-1",
-    },
-    Quest {
-        name: "Quest 2",
-        id: "quest-2",
-    },
-    Quest {
-        name: "Quest 3",
-        id: "quest-3",
-    },
-    Quest {
-        name: "Quest 4",
-        id: "quest-4",
-    },
-];
-
 #[rocket::get("/quest/<id>")]
-pub async fn quest(id: &str, user: Option<AuthUser>) -> Result<Template, http::Status> {
-    if let Some(quest) = QUESTS.iter().find(|quest| quest.id == id) {
+pub async fn quest(
+    id: &str,
+    user: Option<AuthUser>,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Template, http::Status> {
+    if let Some(quest) = quest_service.get_quest(id) {
         Ok(Template::render(
             "quest",
             PageContext::new(

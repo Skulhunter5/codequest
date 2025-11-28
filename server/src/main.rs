@@ -1,13 +1,9 @@
 use std::{
-    collections::HashMap,
     fs::{self, DirBuilder},
     sync::Arc,
 };
 
-use argon2::{
-    Argon2, PasswordHasher,
-    password_hash::{SaltString, rand_core::OsRng},
-};
+use argon2::password_hash::{SaltString, rand_core::OsRng};
 use rocket::{
     Request, State, async_trait,
     form::{Form, FromForm},
@@ -16,12 +12,13 @@ use rocket::{
     response::Redirect,
     routes,
     serde::json::Json,
-    tokio::sync::RwLock,
 };
 use rocket_dyn_templates::Template;
 use serde::Serialize;
+use services::{ConstQuestService, InMemoryUserService, QuestService, UserService};
 
 mod pages;
+mod services;
 
 pub const RUN_DIR: &'static str = "./run";
 pub const SALT_FILE: &'static str = "./run/salt";
@@ -34,54 +31,6 @@ fn load_or_generate_salt() -> SaltString {
     let salt = SaltString::generate(&mut OsRng);
     fs::write(&SALT_FILE, salt.as_str()).expect("failed to write salt to file");
     return salt;
-}
-
-#[async_trait]
-trait UserService: Send + Sync {
-    async fn verify_password(&self, username: &str, password: &str) -> bool;
-    async fn add_user(&self, username: &str, password: &str) -> bool;
-}
-
-pub struct InMemoryUserService {
-    users: RwLock<HashMap<String, String>>,
-    salt: SaltString,
-}
-
-impl InMemoryUserService {
-    pub fn new(salt: SaltString) -> Self {
-        Self {
-            users: RwLock::new(HashMap::new()),
-            salt,
-        }
-    }
-
-    fn hash_password(&self, password: &str) -> String {
-        Argon2::default()
-            .hash_password(password.as_bytes(), self.salt.as_salt())
-            .unwrap()
-            .to_string()
-    }
-}
-
-#[async_trait]
-impl UserService for InMemoryUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> bool {
-        if let Some(correct_hash) = self.users.read().await.get(username) {
-            let hash = self.hash_password(password);
-            return hash == *correct_hash;
-        }
-        return false;
-    }
-
-    async fn add_user(&self, username: &str, password: &str) -> bool {
-        if self.users.read().await.contains_key(username) {
-            return false;
-        }
-
-        let hash = self.hash_password(password);
-        self.users.write().await.insert(username.to_owned(), hash);
-        return true;
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -117,7 +66,6 @@ struct SignupForm<'a> {
 }
 
 #[derive(Serialize)]
-
 struct SignupResponse {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -223,6 +171,11 @@ async fn login(
     }
 }
 
+pub struct Quest<'a> {
+    pub name: &'a str,
+    pub id: &'a str,
+}
+
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     DirBuilder::new()
@@ -252,6 +205,7 @@ async fn main() -> Result<(), rocket::Error> {
         )
         .attach(Template::fairing())
         .manage(Arc::new(InMemoryUserService::new(salt)) as Arc<dyn UserService>)
+        .manage(Arc::new(ConstQuestService::new()) as Arc<dyn QuestService>)
         .launch()
         .await?;
 
