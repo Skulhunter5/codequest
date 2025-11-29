@@ -1,7 +1,13 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io,
+    path::{Path, PathBuf},
+};
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use rocket::{async_trait, tokio::sync::RwLock};
+use serde::Serialize;
 
 use crate::Quest;
 
@@ -21,6 +27,13 @@ impl InMemoryUserService {
     pub fn new(salt: SaltString) -> Self {
         Self {
             users: RwLock::new(HashMap::new()),
+            salt,
+        }
+    }
+
+    pub fn with(salt: SaltString, users: HashMap<String, String>) -> Self {
+        Self {
+            users: RwLock::new(users),
             salt,
         }
     }
@@ -55,6 +68,87 @@ impl UserService for InMemoryUserService {
 
     async fn user_exists(&self, username: &str) -> bool {
         self.users.read().await.contains_key(username)
+    }
+}
+
+pub struct FileUserService {
+    path: PathBuf,
+    in_memory_user_service: InMemoryUserService,
+}
+
+impl FileUserService {
+    pub fn new<P: AsRef<Path>>(salt: SaltString, path: P) -> std::io::Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let users = match File::open(&path) {
+            Ok(file) => {
+                let mut reader =
+                    rocket::serde::json::serde_json::Deserializer::from_reader(file).into_iter();
+                let users = match reader.next() {
+                    Some(users) => users,
+                    None => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "invalid input: no json object in file",
+                        ));
+                    }
+                }?;
+                if reader.next().is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "invalid input: too many json objects in file",
+                    ));
+                }
+
+                users
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => HashMap::new(),
+            Err(e) => return Err(e),
+        };
+
+        let in_memory_user_service = InMemoryUserService::with(salt, users);
+
+        Ok(Self {
+            path,
+            in_memory_user_service,
+        })
+    }
+}
+
+#[async_trait]
+impl UserService for FileUserService {
+    async fn verify_password(&self, username: &str, password: &str) -> bool {
+        self.in_memory_user_service
+            .verify_password(username, password)
+            .await
+    }
+
+    async fn add_user(&self, username: &str, password: &str) -> bool {
+        let created = self
+            .in_memory_user_service
+            .add_user(username, password)
+            .await;
+        if created {
+            let res: Result<(), std::io::Error> = match File::create(&self.path) {
+                Ok(file) => {
+                    let mut serializer = rocket::serde::json::serde_json::Serializer::new(file);
+                    self.in_memory_user_service
+                        .users
+                        .read()
+                        .await
+                        .serialize(&mut serializer)
+                        .map_err(|e| e.into())
+                }
+                Err(e) => Err(e),
+            };
+            if let Err(e) = res {
+                eprintln!("FileUserService: failed to write users to file: {}", e);
+            }
+        }
+        return created;
+    }
+
+    async fn user_exists(&self, username: &str) -> bool {
+        self.in_memory_user_service.user_exists(username).await
     }
 }
 

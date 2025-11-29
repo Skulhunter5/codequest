@@ -10,7 +10,7 @@ use rocket::{
 };
 use serde::Serialize;
 
-use crate::services::UserService;
+use code_quest::services::UserService;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct AuthUser {
