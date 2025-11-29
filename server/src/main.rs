@@ -1,5 +1,6 @@
 use std::{
     fs::{self, DirBuilder},
+    path::Path,
     sync::Arc,
 };
 
@@ -15,13 +16,13 @@ mod services;
 pub const RUN_DIR: &'static str = "./run";
 pub const SALT_FILE: &'static str = "./run/salt";
 
-fn load_or_generate_salt() -> SaltString {
-    if let Ok(salt) = fs::read_to_string(&SALT_FILE) {
+fn load_or_generate_salt<P: AsRef<Path>>(path: P) -> SaltString {
+    if let Ok(salt) = fs::read_to_string(&path) {
         return SaltString::from_b64(&salt).expect("failed to create salt");
     }
 
     let salt = SaltString::generate(&mut OsRng);
-    fs::write(&SALT_FILE, salt.as_str()).expect("failed to write salt to file");
+    fs::write(path, salt.as_str()).expect("failed to write salt to file");
     return salt;
 }
 
@@ -36,7 +37,7 @@ async fn main() -> Result<(), rocket::Error> {
         .recursive(true)
         .create(&RUN_DIR)
         .expect("failed to create run dir");
-    let salt = load_or_generate_salt();
+    let salt = load_or_generate_salt(&SALT_FILE);
 
     // let rocket_config = rocket::Config::figment().merge(("template_dir", "static/"));
     // rocket::custom(&rocket_config)
