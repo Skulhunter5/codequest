@@ -174,10 +174,11 @@ static QUESTS: &[Quest] = &[
 
 #[async_trait]
 pub trait QuestService: Send + Sync {
-    fn get_quests(&self) -> &[Quest];
-    fn get_quest(&self, id: &str) -> Option<&Quest> {
-        self.get_quests().iter().find(|quest| quest.id == id)
+    async fn get_quests(&self) -> &[Quest];
+    async fn get_quest(&self, id: &str) -> Option<&Quest> {
+        self.get_quests().await.iter().find(|quest| quest.id == id)
     }
+    async fn get_input(&self, quest: &Quest, username: &str) -> String;
 }
 
 pub struct ConstQuestService;
@@ -190,7 +191,14 @@ impl ConstQuestService {
 
 #[async_trait]
 impl QuestService for ConstQuestService {
-    fn get_quests(&self) -> &[Quest] {
+    async fn get_quests(&self) -> &[Quest] {
         QUESTS
+    }
+
+    async fn get_input(&self, quest: &Quest, username: &str) -> String {
+        format!(
+            "[WIP] Input for quest '{}' for user '{}'",
+            &quest.name, &username
+        )
     }
 }
