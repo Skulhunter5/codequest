@@ -1,15 +1,20 @@
 use std::{
     collections::HashMap,
-    fs::File,
+    fs::File as StdFile,
     io,
     path::{Path, PathBuf},
 };
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
-use rocket::{async_trait, tokio::sync::RwLock};
-use serde::Serialize;
+use rocket::{
+    async_trait,
+    serde::json,
+    tokio::{fs::File as TokioFile, io::AsyncWriteExt, sync::RwLock},
+};
 
 use crate::Quest;
+
+// TODO: restrict valid usernames
 
 #[async_trait]
 pub trait UserService: Send + Sync {
@@ -79,7 +84,7 @@ pub struct FileUserService {
 impl FileUserService {
     pub fn new<P: AsRef<Path>>(salt: SaltString, path: P) -> std::io::Result<Self> {
         let path = path.as_ref().to_path_buf();
-        let users = match File::open(&path) {
+        let users = match StdFile::open(&path) {
             Ok(file) => {
                 let mut reader =
                     rocket::serde::json::serde_json::Deserializer::from_reader(file).into_iter();
@@ -112,6 +117,14 @@ impl FileUserService {
             in_memory_user_service,
         })
     }
+
+    async fn save(&self) -> Result<(), std::io::Error> {
+        let mut file = TokioFile::create(&self.path).await?;
+
+        let users = self.in_memory_user_service.users.read().await;
+        let json_string = json::to_string(&*users)?;
+        file.write_all(json_string.as_bytes()).await
+    }
 }
 
 #[async_trait]
@@ -128,19 +141,7 @@ impl UserService for FileUserService {
             .add_user(username, password)
             .await;
         if created {
-            let res: Result<(), std::io::Error> = match File::create(&self.path) {
-                Ok(file) => {
-                    let mut serializer = rocket::serde::json::serde_json::Serializer::new(file);
-                    self.in_memory_user_service
-                        .users
-                        .read()
-                        .await
-                        .serialize(&mut serializer)
-                        .map_err(|e| e.into())
-                }
-                Err(e) => Err(e),
-            };
-            if let Err(e) = res {
+            if let Err(e) = self.save().await {
                 eprintln!("FileUserService: failed to write users to file: {}", e);
             }
         }
