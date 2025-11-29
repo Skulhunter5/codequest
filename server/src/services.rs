@@ -9,6 +9,7 @@ use crate::Quest;
 pub trait UserService: Send + Sync {
     async fn verify_password(&self, username: &str, password: &str) -> bool;
     async fn add_user(&self, username: &str, password: &str) -> bool;
+    async fn user_exists(&self, username: &str) -> bool;
 }
 
 pub struct InMemoryUserService {
@@ -50,6 +51,10 @@ impl UserService for InMemoryUserService {
         let hash = self.hash_password(password);
         self.users.write().await.insert(username.to_owned(), hash);
         return true;
+    }
+
+    async fn user_exists(&self, username: &str) -> bool {
+        self.users.read().await.contains_key(username)
     }
 }
 

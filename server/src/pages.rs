@@ -4,7 +4,7 @@ use rocket::{State, fs::NamedFile, http, response::Redirect};
 use rocket_dyn_templates::Template;
 use serde::Serialize;
 
-use crate::{AuthUser, Quest, services::QuestService};
+use crate::{Quest, auth::AuthUser, services::QuestService};
 
 #[derive(Serialize)]
 struct PageContext<'a, MainContext: Serialize> {
