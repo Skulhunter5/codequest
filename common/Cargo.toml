@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 rocket = { workspace = true }
+serde = { workspace = true }
 argon2 = { workspace = true }

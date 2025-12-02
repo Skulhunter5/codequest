@@ -1,11 +1,22 @@
 use argon2::password_hash::{SaltString, rand_core::OsRng};
+use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
 pub mod services;
 
-pub struct Quest<'a> {
-    pub name: &'a str,
-    pub id: &'a str,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Quest {
+    pub name: String,
+    pub id: String,
+}
+
+impl Quest {
+    pub fn new<S: AsRef<str>>(name: S, id: S) -> Self {
+        Self {
+            name: name.as_ref().to_owned(),
+            id: id.as_ref().to_owned(),
+        }
+    }
 }
 
 pub fn load_or_generate_salt<P: AsRef<Path>>(path: P) -> SaltString {

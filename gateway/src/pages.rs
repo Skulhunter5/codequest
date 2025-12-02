@@ -109,10 +109,10 @@ struct QuestPageContext<'a> {
     quest: QuestContext<'a>,
 }
 
-impl<'a> From<&Quest<'a>> for QuestContext<'a> {
-    fn from(quest: &Quest<'a>) -> Self {
+impl<'a> From<&'a Quest> for QuestContext<'a> {
+    fn from(quest: &'a Quest) -> Self {
         Self {
-            name: quest.name,
+            name: &quest.name,
             uri: format!("/quest/{}", &quest.id),
         }
     }
@@ -130,7 +130,7 @@ pub async fn quest(
             PageContext::new(
                 &user,
                 QuestPageContext {
-                    quest: QuestContext::from(quest),
+                    quest: QuestContext::from(&quest),
                 },
             ),
         ))
@@ -147,7 +147,7 @@ pub async fn quest_input(
 ) -> Result<String, http::Status> {
     if let Some(quest) = quest_service.get_quest(id).await {
         if let Some(user) = user {
-            Ok(quest_service.get_input(&quest, &user.username).await)
+            Ok(quest_service.get_input(&quest.id, &user.username).await)
         } else {
             Err(http::Status::Unauthorized)
         }

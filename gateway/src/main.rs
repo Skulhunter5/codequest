@@ -4,7 +4,7 @@ use codequest_common::{
     load_secret_key,
     services::{QuestService, UserService},
 };
-use codequest_gateway::services::ConstQuestService;
+use codequest_quest_service::BackendQuestService;
 use codequest_user_service::BackendUserService;
 use rocket::routes;
 use rocket_dyn_templates::Template;
@@ -52,7 +52,10 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(
             Arc::new(BackendUserService::new("http://localhost:8001/user")) as Arc<dyn UserService>,
         )
-        .manage(Arc::new(ConstQuestService::new()) as Arc<dyn QuestService>)
+        .manage(
+            Arc::new(BackendQuestService::new("http://localhost:8002/quest"))
+                as Arc<dyn QuestService>,
+        )
         .launch()
         .await?;
 

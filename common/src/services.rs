@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rocket::async_trait;
 
 use crate::Quest;
@@ -11,9 +13,13 @@ pub trait UserService: Send + Sync {
 
 #[async_trait]
 pub trait QuestService: Send + Sync {
-    async fn get_quests(&self) -> &[Quest];
-    async fn get_quest(&self, id: &str) -> Option<&Quest> {
-        self.get_quests().await.iter().find(|quest| quest.id == id)
+    async fn get_quests(&self) -> Arc<[Quest]>;
+    async fn get_quest(&self, id: &str) -> Option<Quest> {
+        self.get_quests()
+            .await
+            .into_iter()
+            .find(|quest| quest.id == id)
+            .cloned()
     }
-    async fn get_input(&self, quest: &Quest, username: &str) -> String;
+    async fn get_input(&self, quest_id: &str, username: &str) -> String;
 }
