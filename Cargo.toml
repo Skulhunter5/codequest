@@ -1,8 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["server"]
+members = [ "common","gateway", "quest-service", "user-service"]
 
 [workspace.dependencies]
 rocket = "0.5"
 serde = "1.0"
 argon2 = "0.5"
+reqwest = "0.12"

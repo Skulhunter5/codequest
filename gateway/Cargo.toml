@@ -1,10 +1,11 @@
 [package]
-name = "code-quest"
+name = "codequest-gateway"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+codequest-common = { path = "../common/" }
+codequest-user-service = { path = "../user-service/" }
 rocket = { workspace = true, features = ["secrets", "json"] }
 rocket_dyn_templates = { version = "0.2", features = ["handlebars"] }
 serde = { workspace = true }
-argon2 = { workspace = true }

@@ -1,0 +1,11 @@
+[package]
+name = "codequest-user-service"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+codequest-common = { path = "../common/" }
+rocket = { workspace = true, features = ["json"] }
+serde = { workspace = true }
+argon2 = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }

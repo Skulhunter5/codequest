@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use codequest_common::services::UserService;
 use rocket::{
     FromForm, Request, State, async_trait,
     form::Form,
@@ -9,8 +10,6 @@ use rocket::{
     serde::json::Json,
 };
 use serde::Serialize;
-
-use code_quest::services::UserService;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct AuthUser {

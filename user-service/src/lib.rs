@@ -6,23 +6,16 @@ use std::{
 };
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
+use codequest_common::services::UserService;
+use reqwest::{Client, StatusCode};
 use rocket::{
     async_trait,
     serde::json,
-    tokio::{fs::File as TokioFile, io::AsyncWriteExt, sync::RwLock},
+    tokio::{fs::File as TokioFile, io::AsyncWriteExt as _, sync::RwLock},
 };
-
-use crate::Quest;
+use serde::{Deserialize, Serialize};
 
 // TODO: restrict valid usernames
-
-#[async_trait]
-pub trait UserService: Send + Sync {
-    async fn verify_password(&self, username: &str, password: &str) -> bool;
-    async fn add_user(&self, username: &str, password: &str) -> bool;
-    async fn user_exists(&self, username: &str) -> bool;
-}
-
 pub struct InMemoryUserService {
     users: RwLock<HashMap<String, String>>,
     salt: SaltString,
@@ -153,52 +146,87 @@ impl UserService for FileUserService {
     }
 }
 
-static QUESTS: &[Quest] = &[
-    Quest {
-        name: "Quest 1",
-        id: "quest-1",
-    },
-    Quest {
-        name: "Quest 2",
-        id: "quest-2",
-    },
-    Quest {
-        name: "Quest 3",
-        id: "quest-3",
-    },
-    Quest {
-        name: "Quest 4",
-        id: "quest-4",
-    },
-];
-
-#[async_trait]
-pub trait QuestService: Send + Sync {
-    async fn get_quests(&self) -> &[Quest];
-    async fn get_quest(&self, id: &str) -> Option<&Quest> {
-        self.get_quests().await.iter().find(|quest| quest.id == id)
-    }
-    async fn get_input(&self, quest: &Quest, username: &str) -> String;
+pub struct BackendUserService {
+    address: String,
+    client: Client,
 }
 
-pub struct ConstQuestService;
-
-impl ConstQuestService {
-    pub fn new() -> Self {
-        Self
+impl BackendUserService {
+    pub fn new<S: AsRef<str>>(address: S) -> Self {
+        Self {
+            address: address.as_ref().to_owned(),
+            client: Client::new(),
+        }
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct UserCredentials<'a> {
+    pub username: &'a str,
+    pub password: &'a str,
+}
+
 #[async_trait]
-impl QuestService for ConstQuestService {
-    async fn get_quests(&self) -> &[Quest] {
-        QUESTS
+impl UserService for BackendUserService {
+    async fn verify_password(&self, username: &str, password: &str) -> bool {
+        let credentials = UserCredentials { username, password };
+        let response = match self
+            .client
+            .post(format!("{}/login", &self.address))
+            .json(&credentials)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                eprintln!("request to user-service backend failed: {}", e);
+                return false;
+            }
+        };
+        if response.status() == StatusCode::NO_CONTENT {
+            return true;
+        }
+        return false;
     }
 
-    async fn get_input(&self, quest: &Quest, username: &str) -> String {
-        format!(
-            "[WIP] Input for quest '{}' for user '{}'",
-            &quest.name, &username
-        )
+    async fn add_user(&self, username: &str, password: &str) -> bool {
+        let credentials = UserCredentials { username, password };
+        let response = match self
+            .client
+            .post(&self.address)
+            .json(&credentials)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                eprintln!("request to user-service backend failed: {}", e);
+                return false;
+            }
+        };
+        if response.status() == StatusCode::CREATED {
+            return true;
+        }
+        return false;
+    }
+
+    async fn user_exists(&self, username: &str) -> bool {
+        let response = match self
+            .client
+            .get(format!("{}/{}", &self.address, username))
+            .json(&username)
+            .send()
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => {
+                eprintln!("request to user-service backend failed: {}", e);
+                return false;
+            }
+        };
+        if response.status() == StatusCode::NO_CONTENT {
+            return true;
+        }
+        return false;
     }
 }

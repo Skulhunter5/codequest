@@ -1,0 +1,8 @@
+[package]
+name = "codequest-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rocket = { workspace = true }
+argon2 = { workspace = true }

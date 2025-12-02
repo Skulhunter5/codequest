@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use code_quest::{Quest, services::QuestService};
+use codequest_common::{Quest, services::QuestService};
 use rocket::{State, fs::NamedFile, http, response::Redirect};
 use rocket_dyn_templates::Template;
 use serde::Serialize;
