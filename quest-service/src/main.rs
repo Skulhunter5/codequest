@@ -1,11 +1,12 @@
 use std::{fs::DirBuilder, sync::Arc};
 
 use codequest_common::{Quest, load_secret_key, services::QuestService};
-use codequest_quest_service::ConstQuestService;
+use codequest_quest_service::FileQuestService;
 use rocket::{State, routes, serde::json::Json};
 
 pub const RUN_DIR: &'static str = "./run";
 pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+pub const QUESTS_FILE: &'static str = "./run/quests.json";
 
 #[rocket::get("/")]
 async fn get_quests(quest_service: &State<Arc<dyn QuestService>>) -> Json<Arc<[Quest]>> {
@@ -42,7 +43,10 @@ async fn main() -> Result<(), rocket::Error> {
 
     rocket::custom(&rocket_config)
         .mount("/quest", routes![get_quests, get_quest, get_input])
-        .manage(Arc::new(ConstQuestService::new()) as Arc<dyn QuestService>)
+        .manage(
+            Arc::new(FileQuestService::new(&QUESTS_FILE).expect("failed to start QuestService"))
+                as Arc<dyn QuestService>,
+        )
         .launch()
         .await?;
 
