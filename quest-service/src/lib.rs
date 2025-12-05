@@ -40,6 +40,7 @@ impl QuestService for ConstQuestService {
 pub struct FileQuestService {
     quests: Arc<[Quest]>,
 }
+
 impl FileQuestService {
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let path = path.as_ref();
