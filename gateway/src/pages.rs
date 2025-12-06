@@ -1,6 +1,6 @@
 use std::{path::Path, sync::Arc};
 
-use codequest_common::{Quest, services::QuestService};
+use codequest_common::{Error, Quest, services::QuestService};
 use rocket::{State, fs::NamedFile, http, response::Redirect};
 use rocket_dyn_templates::Template;
 use serde::Serialize;
@@ -87,21 +87,21 @@ struct QuestContext<'a> {
 pub async fn quests(
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
-) -> Template {
-    Template::render(
+) -> Result<Template, Error> {
+    Ok(Template::render(
         "quests",
         PageContext::new(
             &user,
             QuestsPageContext {
                 quests: quest_service
                     .get_quests()
-                    .await
+                    .await?
                     .iter()
                     .map(|quest| QuestContext::from(quest))
                     .collect::<Vec<_>>(),
             },
         ),
-    )
+    ))
 }
 
 #[derive(Serialize)]
@@ -123,8 +123,8 @@ pub async fn quest(
     id: &str,
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
-) -> Result<Template, http::Status> {
-    if let Some(quest) = quest_service.get_quest(id).await {
+) -> Result<Result<Template, http::Status>, Error> {
+    Ok(if let Some(quest) = quest_service.get_quest(id).await? {
         Ok(Template::render(
             "quest",
             PageContext::new(
@@ -136,7 +136,7 @@ pub async fn quest(
         ))
     } else {
         Err(http::Status::NotFound)
-    }
+    })
 }
 
 #[rocket::get("/quest/<id>/input")]
@@ -145,13 +145,13 @@ pub async fn quest_input(
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<String, http::Status> {
-    if let Some(quest) = quest_service.get_quest(id).await {
-        if let Some(user) = user {
-            Ok(quest_service.get_input(&quest.id, &user.username).await)
-        } else {
-            Err(http::Status::Unauthorized)
+    if let Some(user) = user {
+        match quest_service.get_input(&id, &user.username).await {
+            Ok(Some(input)) => Ok(input),
+            Ok(None) => Err(http::Status::NotFound),
+            Err(_) => Err(http::Status::InternalServerError),
         }
     } else {
-        Err(http::Status::NotFound)
+        Err(http::Status::Unauthorized)
     }
 }

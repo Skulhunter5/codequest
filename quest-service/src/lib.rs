@@ -1,6 +1,6 @@
 use std::{io, path::Path, sync::Arc};
 
-use codequest_common::{Quest, services::QuestService};
+use codequest_common::{Error, Quest, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
 
@@ -25,15 +25,15 @@ impl ConstQuestService {
 
 #[async_trait]
 impl QuestService for ConstQuestService {
-    async fn get_quests(&self) -> Arc<[Quest]> {
-        self.quests.clone()
+    async fn get_quests(&self) -> Result<Arc<[Quest]>, Error> {
+        Ok(self.quests.clone())
     }
 
-    async fn get_input(&self, quest_id: &str, username: &str) -> String {
-        format!(
+    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+        Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
             &quest_id, &username
-        )
+        )))
     }
 }
 
@@ -51,15 +51,15 @@ impl FileQuestService {
 
 #[async_trait]
 impl QuestService for FileQuestService {
-    async fn get_quests(&self) -> Arc<[Quest]> {
-        self.quests.clone()
+    async fn get_quests(&self) -> Result<Arc<[Quest]>, Error> {
+        Ok(self.quests.clone())
     }
 
-    async fn get_input(&self, quest_id: &str, username: &str) -> String {
-        format!(
+    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+        Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
             &quest_id, &username
-        )
+        )))
     }
 }
 
@@ -79,55 +79,54 @@ impl BackendQuestService {
 
 #[async_trait]
 impl QuestService for BackendQuestService {
-    async fn get_quests(&self) -> Arc<[Quest]> {
-        let response = match self.client.get(&self.address).send().await {
-            Ok(response) => response,
-            Err(e) => {
-                eprintln!("request to quest-service backend failed: {}", e);
-                return Arc::new([]);
-            }
-        };
-        if response.status() == StatusCode::OK {
-            let quests: Box<[Quest]> = response.json().await.unwrap();
-            return Arc::from(quests);
+    async fn get_quests(&self) -> Result<Arc<[Quest]>, Error> {
+        let response = self
+            .client
+            .get(&self.address)
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+        match response.status() {
+            StatusCode::OK => match response.json::<Box<[Quest]>>().await {
+                Ok(quests) => Ok(Arc::from(quests)),
+                Err(_) => Err(Error::InvalidResponse),
+            },
+            _ => Err(Error::InvalidResponse),
         }
-        return Arc::new([]);
     }
-    async fn get_quest(&self, id: &str) -> Option<Quest> {
-        let response = match self
+
+    async fn get_quest(&self, id: &str) -> Result<Option<Quest>, Error> {
+        let response = self
             .client
             .get(format!("{}/{}", &self.address, id))
             .send()
             .await
-        {
-            Ok(response) => response,
-            Err(e) => {
-                eprintln!("request to quest-service backend failed: {}", e);
-                return None;
-            }
-        };
-        if response.status() == StatusCode::OK {
-            let quest = response.json().await.unwrap();
-            return Some(quest);
+            .map_err(|_| Error::ServerUnreachable)?;
+        match response.status() {
+            StatusCode::OK => match response.json().await {
+                Ok(quest) => Ok(Some(quest)),
+                Err(_) => Err(Error::ServerUnreachable),
+            },
+            StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
         }
-        return None;
     }
-    async fn get_input(&self, quest_id: &str, username: &str) -> String {
-        let response = match self
+
+    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+        let response = self
             .client
             .get(format!("{}/{}/input/{}", &self.address, quest_id, username))
             .send()
             .await
-        {
-            Ok(response) => response,
-            Err(e) => {
-                eprintln!("request to quest-service backend failed: {}", e);
-                return String::new();
-            }
-        };
-        if response.status() == StatusCode::OK {
-            return response.text().await.unwrap();
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::OK => match response.text().await {
+                Ok(input) => Ok(Some(input)),
+                Err(_) => Err(Error::InvalidResponse),
+            },
+            StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
         }
-        return String::new();
     }
 }

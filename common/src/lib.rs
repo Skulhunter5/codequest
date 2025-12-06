@@ -2,7 +2,10 @@ use argon2::password_hash::{SaltString, rand_core::OsRng};
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
+mod error;
 pub mod services;
+
+pub use error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Quest {
