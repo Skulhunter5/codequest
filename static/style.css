@@ -1,3 +1,7 @@
+body, p, li, span, label {
+    color: #eee;
+}
+
 body {
     margin: 0;
     background: #111;
@@ -148,4 +152,14 @@ h1 {
     color: #ff9a9a;
     text-align: center;
     margin-bottom: 1rem;
+}
+
+main a {
+    color: #a084ff;
+    text-decoration: none;
+    transition: 0.2s;
+}
+
+main a:hover {
+    color: #c0a8ff;
 }

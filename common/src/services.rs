@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use rocket::async_trait;
 
-use crate::{Error, Quest};
+use crate::{Error, Quest, QuestItem};
 
 #[async_trait]
 pub trait UserService: Send + Sync {
@@ -13,14 +11,13 @@ pub trait UserService: Send + Sync {
 
 #[async_trait]
 pub trait QuestService: Send + Sync {
-    async fn get_quests(&self) -> Result<Arc<[Quest]>, Error>;
-    async fn get_quest(&self, id: &str) -> Result<Option<Quest>, Error> {
-        Ok(self
-            .get_quests()
-            .await?
-            .into_iter()
-            .find(|quest| quest.id == id)
-            .cloned())
-    }
+    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error>;
+    async fn get_quest(&self, id: &str) -> Result<Option<Quest>, Error>;
     async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error>;
+    async fn submit_answer(
+        &self,
+        quest_id: &str,
+        username: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error>;
 }

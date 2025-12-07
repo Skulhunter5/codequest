@@ -1,8 +1,8 @@
 use std::{path::Path, sync::Arc};
 
-use codequest_common::{Error, Quest, services::QuestService};
-use rocket::{State, fs::NamedFile, http, response::Redirect};
-use rocket_dyn_templates::Template;
+use codequest_common::{Error, QuestItem, services::QuestService};
+use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirect};
+use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 
 use crate::auth::AuthUser;
@@ -94,7 +94,7 @@ pub async fn quests(
             &user,
             QuestsPageContext {
                 quests: quest_service
-                    .get_quests()
+                    .list_quests()
                     .await?
                     .iter()
                     .map(|quest| QuestContext::from(quest))
@@ -104,13 +104,8 @@ pub async fn quests(
     ))
 }
 
-#[derive(Serialize)]
-struct QuestPageContext<'a> {
-    quest: QuestContext<'a>,
-}
-
-impl<'a> From<&'a Quest> for QuestContext<'a> {
-    fn from(quest: &'a Quest) -> Self {
+impl<'a> From<&'a QuestItem> for QuestContext<'a> {
+    fn from(quest: &'a QuestItem) -> Self {
         Self {
             name: &quest.name,
             uri: format!("/quest/{}", &quest.id),
@@ -129,8 +124,12 @@ pub async fn quest(
             "quest",
             PageContext::new(
                 &user,
-                QuestPageContext {
-                    quest: QuestContext::from(&quest),
+                context! {
+                    quest: context! {
+                        name: &quest.item.name,
+                        id: &quest.item.id,
+                        text: &quest.text,
+                    },
                 },
             ),
         ))
@@ -154,4 +153,42 @@ pub async fn quest_input(
     } else {
         Err(http::Status::Unauthorized)
     }
+}
+
+#[derive(FromForm)]
+pub(crate) struct AnswerForm<'a> {
+    pub(crate) answer: &'a str,
+}
+
+#[rocket::post("/quest/<quest_id>/answer", data = "<form>")]
+pub async fn quest_answer(
+    form: Form<AnswerForm<'_>>,
+    quest_id: &str,
+    user: Option<AuthUser>,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Result<Template, http::Status>, Error> {
+    let quest = match quest_service.get_quest(&quest_id).await? {
+        Some(quest) => quest,
+        None => return Ok(Err(http::Status::NotFound)),
+    };
+    Ok(if let Some(user) = user {
+        match quest_service
+            .submit_answer(&quest_id, &user.username, &form.answer)
+            .await?
+        {
+            Some(answer_was_correct) => Ok(Template::render(
+                "answer",
+                context! {
+                    answer_was_correct,
+                    quest: context! {
+                        name: &quest.item.name,
+                        id: &quest.item.id,
+                    },
+                },
+            )),
+            None => Err(http::Status::NotFound),
+        }
+    } else {
+        Err(http::Status::Unauthorized)
+    })
 }

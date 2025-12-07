@@ -9,11 +9,27 @@ pub use error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Quest {
+    #[serde(flatten)]
+    pub item: QuestItem,
+    pub text: String,
+}
+
+impl Quest {
+    pub fn new<S: AsRef<str>>(name: S, id: S, text: S) -> Self {
+        Self {
+            item: QuestItem::new(name, id),
+            text: text.as_ref().to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct QuestItem {
     pub name: String,
     pub id: String,
 }
 
-impl Quest {
+impl QuestItem {
     pub fn new<S: AsRef<str>>(name: S, id: S) -> Self {
         Self {
             name: name.as_ref().to_owned(),

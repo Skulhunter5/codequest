@@ -1,6 +1,6 @@
 use std::{fs::DirBuilder, sync::Arc};
 
-use codequest_common::{Error, Quest, load_secret_key, services::QuestService};
+use codequest_common::{Error, Quest, QuestItem, load_secret_key, services::QuestService};
 use codequest_quest_service::FileQuestService;
 use rocket::{
     State, catchers,
@@ -17,10 +17,10 @@ pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
 pub const QUESTS_FILE: &'static str = "./run/quests.json";
 
 #[rocket::get("/")]
-async fn get_quests(
+async fn list_quests(
     quest_service: &State<Arc<dyn QuestService>>,
-) -> Result<Json<Arc<[Quest]>>, Error> {
-    quest_service.get_quests().await.map(|quests| Json(quests))
+) -> Result<Json<Box<[QuestItem]>>, Error> {
+    quest_service.list_quests().await.map(|quests| Json(quests))
 }
 
 #[rocket::get("/<id>")]
@@ -47,6 +47,20 @@ async fn get_input(
         .ok_or(status::NotFound(RawText(""))))
 }
 
+#[rocket::post("/<quest_id>/answer/<username>", data = "<answer>")]
+async fn submit_answer(
+    quest_id: &str,
+    username: &str,
+    answer: &str,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
+    Ok(quest_service
+        .submit_answer(quest_id, username, answer)
+        .await?
+        .map(|answer_was_correct| answer_was_correct.to_string())
+        .ok_or(status::NotFound(RawText(""))))
+}
+
 #[rocket::catch(default)]
 fn catch_all() -> &'static str {
     ""
@@ -68,7 +82,10 @@ async fn main() -> Result<(), rocket::Error> {
 
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])
-        .mount("/quest", routes![get_quests, get_quest, get_input])
+        .mount(
+            "/quest",
+            routes![list_quests, get_quest, get_input, submit_answer],
+        )
         .manage(
             Arc::new(FileQuestService::new(&QUESTS_FILE).expect("failed to start QuestService"))
                 as Arc<dyn QuestService>,

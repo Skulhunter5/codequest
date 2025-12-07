@@ -1,7 +1,15 @@
 {{#*inline "body"}}
     <h1>Quest: {{quest.name}}</h1>
 
-    <bold>[WIP]</bold>
+    <p>{{quest.text}}</p>
+    <br>
+    <p>Get <a href="/quest/{{quest.id}}/input">your input</a> for this quest!</p>
+    <br>
+    <form method="POST" action="/quest/{{quest.id}}/answer">
+        <label>Answer</label>
+        <input type="text" name="answer"></input>
+        <button type="submit" class="submit-btn">Submit</button>
+    </form>
 {{/inline}}
 
-{{> base title="Quest: {{quest.name}} - Code-Quest" user=user }}
+{{> base title="{{quest.name}} - Code-Quest" user=user }}

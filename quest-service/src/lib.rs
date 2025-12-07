@@ -1,6 +1,6 @@
 use std::{io, path::Path, sync::Arc};
 
-use codequest_common::{Error, Quest, services::QuestService};
+use codequest_common::{Error, Quest, QuestItem, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
 
@@ -12,10 +12,26 @@ impl ConstQuestService {
     pub fn new() -> Self {
         let quests = Arc::from(
             vec![
-                Quest::new("Quest 1", "quest-1"),
-                Quest::new("Quest 2", "quest-2"),
-                Quest::new("Quest 3", "quest-3"),
-                Quest::new("Quest 4", "quest-4"),
+                Quest::new(
+                    "Quest 1",
+                    "quest-1",
+                    "For this quest, you have to submit '1'",
+                ),
+                Quest::new(
+                    "Quest 2",
+                    "quest-2",
+                    "For this quest, you have to submit '2'",
+                ),
+                Quest::new(
+                    "Quest 3",
+                    "quest-3",
+                    "For this quest, you have to submit '3'",
+                ),
+                Quest::new(
+                    "Quest 4",
+                    "quest-4",
+                    "For this quest, you have to submit '4'",
+                ),
             ]
             .into_boxed_slice(),
         );
@@ -25,8 +41,21 @@ impl ConstQuestService {
 
 #[async_trait]
 impl QuestService for ConstQuestService {
-    async fn get_quests(&self) -> Result<Arc<[Quest]>, Error> {
-        Ok(self.quests.clone())
+    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
+        Ok(self
+            .quests
+            .iter()
+            .map(|quest| quest.item.clone())
+            .collect::<Vec<QuestItem>>()
+            .into_boxed_slice())
+    }
+
+    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
+        Ok(self
+            .quests
+            .iter()
+            .find(|quest| quest.item.id == quest_id)
+            .cloned())
     }
 
     async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
@@ -34,6 +63,23 @@ impl QuestService for ConstQuestService {
             "[WIP] Input for quest '{}' for user '{}'",
             &quest_id, &username
         )))
+    }
+
+    async fn submit_answer(
+        &self,
+        quest_id: &str,
+        _username: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        Ok(if let Some(_) = self.get_quest(quest_id).await? {
+            if answer == quest_id {
+                Some(true)
+            } else {
+                Some(false)
+            }
+        } else {
+            None
+        })
     }
 }
 
@@ -51,8 +97,21 @@ impl FileQuestService {
 
 #[async_trait]
 impl QuestService for FileQuestService {
-    async fn get_quests(&self) -> Result<Arc<[Quest]>, Error> {
-        Ok(self.quests.clone())
+    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
+        Ok(self
+            .quests
+            .iter()
+            .map(|quest| quest.item.clone())
+            .collect::<Vec<QuestItem>>()
+            .into_boxed_slice())
+    }
+
+    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
+        Ok(self
+            .quests
+            .iter()
+            .find(|quest| quest.item.id == quest_id)
+            .cloned())
     }
 
     async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
@@ -60,6 +119,23 @@ impl QuestService for FileQuestService {
             "[WIP] Input for quest '{}' for user '{}'",
             &quest_id, &username
         )))
+    }
+
+    async fn submit_answer(
+        &self,
+        quest_id: &str,
+        _username: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        Ok(if let Some(_) = self.get_quest(quest_id).await? {
+            if answer == quest_id {
+                Some(true)
+            } else {
+                Some(false)
+            }
+        } else {
+            None
+        })
     }
 }
 
@@ -79,7 +155,7 @@ impl BackendQuestService {
 
 #[async_trait]
 impl QuestService for BackendQuestService {
-    async fn get_quests(&self) -> Result<Arc<[Quest]>, Error> {
+    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
         let response = self
             .client
             .get(&self.address)
@@ -87,10 +163,10 @@ impl QuestService for BackendQuestService {
             .await
             .map_err(|_| Error::ServerUnreachable)?;
         match response.status() {
-            StatusCode::OK => match response.json::<Box<[Quest]>>().await {
-                Ok(quests) => Ok(Arc::from(quests)),
-                Err(_) => Err(Error::InvalidResponse),
-            },
+            StatusCode::OK => response
+                .json::<Box<[QuestItem]>>()
+                .await
+                .map_err(|_| Error::InvalidResponse),
             _ => Err(Error::InvalidResponse),
         }
     }
@@ -123,6 +199,35 @@ impl QuestService for BackendQuestService {
         match response.status() {
             StatusCode::OK => match response.text().await {
                 Ok(input) => Ok(Some(input)),
+                Err(_) => Err(Error::InvalidResponse),
+            },
+            StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn submit_answer(
+        &self,
+        quest_id: &str,
+        username: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        let response = self
+            .client
+            .post(format!(
+                "{}/{}/answer/{}",
+                &self.address, quest_id, username
+            ))
+            .body(answer.to_owned())
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::OK => match response.text().await {
+                Ok(input) => Ok(Some(
+                    input.parse::<bool>().map_err(|_| Error::InvalidResponse)?,
+                )),
                 Err(_) => Err(Error::InvalidResponse),
             },
             StatusCode::NOT_FOUND => Ok(None),
