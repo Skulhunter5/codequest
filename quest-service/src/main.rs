@@ -13,8 +13,10 @@ use rocket::{
 };
 
 pub const RUN_DIR: &'static str = "./run";
-pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
 pub const QUESTS_FILE: &'static str = "./run/quests.json";
+pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+
+pub const QUESTS_DIR: &'static str = "./run/quests";
 
 #[rocket::get("/")]
 async fn list_quests(
@@ -70,7 +72,7 @@ fn catch_all() -> &'static str {
 async fn main() -> Result<(), rocket::Error> {
     DirBuilder::new()
         .recursive(true)
-        .create(&RUN_DIR)
+        .create(&QUESTS_DIR)
         .expect("failed to create run dir");
 
     let rocket_config = rocket::Config::figment()
