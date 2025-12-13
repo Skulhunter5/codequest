@@ -14,7 +14,7 @@ pub trait QuestService: Send + Sync {
     async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error>;
     async fn get_quest(&self, id: &str) -> Result<Option<Quest>, Error>;
     async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error>;
-    async fn submit_answer(
+    async fn verify_answer(
         &self,
         quest_id: &str,
         username: &str,

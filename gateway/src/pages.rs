@@ -173,7 +173,7 @@ pub async fn quest_answer(
     };
     Ok(if let Some(user) = user {
         match quest_service
-            .submit_answer(&quest_id, &user.username, &form.answer)
+            .verify_answer(&quest_id, &user.username, &form.answer)
             .await?
         {
             Some(answer_was_correct) => Ok(Template::render(

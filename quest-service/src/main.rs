@@ -50,14 +50,14 @@ async fn get_input(
 }
 
 #[rocket::post("/<quest_id>/answer/<username>", data = "<answer>")]
-async fn submit_answer(
+async fn verify_answer(
     quest_id: &str,
     username: &str,
     answer: &str,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(quest_service
-        .submit_answer(quest_id, username, answer)
+        .verify_answer(quest_id, username, answer)
         .await?
         .map(|answer_was_correct| answer_was_correct.to_string())
         .ok_or(status::NotFound(RawText(""))))
@@ -86,7 +86,7 @@ async fn main() -> Result<(), rocket::Error> {
         .register("/", catchers![catch_all])
         .mount(
             "/quest",
-            routes![list_quests, get_quest, get_input, submit_answer],
+            routes![list_quests, get_quest, get_input, verify_answer],
         )
         .manage(
             Arc::new(FileQuestService::new(&QUESTS_FILE).expect("failed to start QuestService"))

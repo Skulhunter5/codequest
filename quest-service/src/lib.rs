@@ -63,7 +63,7 @@ impl QuestService for ConstQuestService {
         )))
     }
 
-    async fn submit_answer(
+    async fn verify_answer(
         &self,
         quest_id: &str,
         _username: &str,
@@ -119,7 +119,7 @@ impl QuestService for FileQuestService {
         )))
     }
 
-    async fn submit_answer(
+    async fn verify_answer(
         &self,
         quest_id: &str,
         _username: &str,
@@ -204,7 +204,7 @@ impl QuestService for BackendQuestService {
         }
     }
 
-    async fn submit_answer(
+    async fn verify_answer(
         &self,
         quest_id: &str,
         username: &str,
