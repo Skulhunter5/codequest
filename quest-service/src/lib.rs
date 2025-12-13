@@ -1,40 +1,38 @@
-use std::{io, path::Path, sync::Arc};
+use std::{io, path::Path};
 
 use codequest_common::{Error, Quest, QuestItem, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
 
 pub struct ConstQuestService {
-    quests: Arc<[Quest]>,
+    quests: Box<[Quest]>,
 }
 
 impl ConstQuestService {
     pub fn new() -> Self {
-        let quests = Arc::from(
-            vec![
-                Quest::new(
-                    "Quest 1",
-                    "quest-1",
-                    "For this quest, you have to submit '1'",
-                ),
-                Quest::new(
-                    "Quest 2",
-                    "quest-2",
-                    "For this quest, you have to submit '2'",
-                ),
-                Quest::new(
-                    "Quest 3",
-                    "quest-3",
-                    "For this quest, you have to submit '3'",
-                ),
-                Quest::new(
-                    "Quest 4",
-                    "quest-4",
-                    "For this quest, you have to submit '4'",
-                ),
-            ]
-            .into_boxed_slice(),
-        );
+        let quests = vec![
+            Quest::new(
+                "Quest 1",
+                "quest-1",
+                "For this quest, you have to submit '1'",
+            ),
+            Quest::new(
+                "Quest 2",
+                "quest-2",
+                "For this quest, you have to submit '2'",
+            ),
+            Quest::new(
+                "Quest 3",
+                "quest-3",
+                "For this quest, you have to submit '3'",
+            ),
+            Quest::new(
+                "Quest 4",
+                "quest-4",
+                "For this quest, you have to submit '4'",
+            ),
+        ]
+        .into_boxed_slice();
         Self { quests }
     }
 }
@@ -84,7 +82,7 @@ impl QuestService for ConstQuestService {
 }
 
 pub struct FileQuestService {
-    quests: Arc<[Quest]>,
+    quests: Box<[Quest]>,
 }
 
 impl FileQuestService {
