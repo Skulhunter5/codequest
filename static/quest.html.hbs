@@ -3,13 +3,17 @@
 
     <p>{{quest.text}}</p>
     <br>
-    <p>Get <a href="/quest/{{quest.id}}/input">your input</a> for this quest!</p>
-    <br>
-    <form method="POST" action="/quest/{{quest.id}}/answer">
-        <label>Answer</label>
-        <input type="text" name="answer"></input>
-        <button type="submit" class="submit-btn">Submit</button>
-    </form>
+    {{#if user}}
+        <p>Get <a href="/quest/{{quest.id}}/input">your input</a> for this quest!</p>
+        <br>
+        <form method="POST" action="/quest/{{quest.id}}/answer">
+            <label>Answer</label>
+            <input type="text" name="answer"></input>
+            <button type="submit" class="submit-btn">Submit</button>
+        </form>
+    {{else}}
+        <p><a href="/login">Log In</a> to attempt completing this quest.</p>
+    {{/if}}
 {{/inline}}
 
 {{> base title="{{quest.name}} - Code-Quest" user=user }}
