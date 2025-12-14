@@ -6,7 +6,7 @@ use std::{
 };
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
-use codequest_common::{Error, services::UserService};
+use codequest_common::{Credentials, Error, services::UserService};
 use reqwest::{Client, StatusCode};
 use rocket::{
     async_trait,
@@ -145,11 +145,6 @@ impl UserService for FileUserService {
     async fn user_exists(&self, username: &str) -> bool {
         self.in_memory_user_service.user_exists(username).await
     }
-}
-
-pub struct Credentials {
-    pub username: String,
-    pub password: String,
 }
 
 pub struct DatabaseUserService {

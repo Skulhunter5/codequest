@@ -2,9 +2,11 @@ use argon2::password_hash::{SaltString, rand_core::OsRng};
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::Path};
 
+mod credentials;
 mod error;
 pub mod services;
 
+pub use credentials::Credentials;
 pub use error::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

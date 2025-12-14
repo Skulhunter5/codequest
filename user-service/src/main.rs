@@ -1,7 +1,9 @@
 use std::{env, fs::DirBuilder, sync::Arc};
 
-use codequest_common::{load_or_generate_salt, load_secret_key, services::UserService};
-use codequest_user_service::{Credentials, DatabaseUserService, UserCredentials};
+use codequest_common::{
+    Credentials, load_or_generate_salt, load_secret_key, services::UserService,
+};
+use codequest_user_service::{DatabaseUserService, UserCredentials};
 use dotenv::dotenv;
 use rocket::{State, http, routes, serde::json::Json};
 
@@ -59,7 +61,7 @@ async fn main() -> Result<(), rocket::Error> {
     let db_credentials = {
         let username = env::var("POSTGRES_USER").expect("POSTGRES_USER not set");
         let password = env::var("POSTGRES_PASSWORD").expect("POSTGRES_PASSWORD not set");
-        Credentials { username, password }
+        Credentials::new(username, password)
     };
     let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
     let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
