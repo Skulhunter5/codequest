@@ -1,5 +1,7 @@
+{{#*inline "title"}}{{quest.name}} - CodeQuest{{/inline}}
+
 {{#*inline "body"}}
-    <h1>Quest: {{quest.name}}</h1>
+    <h1>{{quest.name}}</h1>
 
     <p>{{quest.text}}</p>
     <br>
@@ -16,4 +18,4 @@
     {{/if}}
 {{/inline}}
 
-{{> base title="{{quest.name}} - Code-Quest" user=user }}
+{{> base user=user }}
