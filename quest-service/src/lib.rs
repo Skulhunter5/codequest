@@ -1,8 +1,9 @@
 use std::{io, path::Path};
 
-use codequest_common::{Error, Quest, QuestItem, services::QuestService};
+use codequest_common::{Credentials, Error, Quest, QuestItem, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub struct ConstQuestService {
     quests: Box<[Quest]>,
@@ -12,23 +13,23 @@ impl ConstQuestService {
     pub fn new() -> Self {
         let quests = vec![
             Quest::new(
-                "Quest 1",
                 "quest-1",
+                "Quest 1",
                 "For this quest, you have to submit '1'",
             ),
             Quest::new(
-                "Quest 2",
                 "quest-2",
+                "Quest 2",
                 "For this quest, you have to submit '2'",
             ),
             Quest::new(
-                "Quest 3",
                 "quest-3",
+                "Quest 3",
                 "For this quest, you have to submit '3'",
             ),
             Quest::new(
-                "Quest 4",
                 "quest-4",
+                "Quest 4",
                 "For this quest, you have to submit '4'",
             ),
         ]
@@ -110,6 +111,82 @@ impl QuestService for FileQuestService {
             .iter()
             .find(|quest| quest.item.id == quest_id)
             .cloned())
+    }
+
+    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+        Ok(Some(format!(
+            "[WIP] Input for quest '{}' for user '{}'",
+            &quest_id, &username
+        )))
+    }
+
+    async fn get_answer(&self, quest_id: &str, _username: &str) -> Result<Option<String>, Error> {
+        Ok(if self.quest_exists(&quest_id).await? {
+            Some(quest_id.to_owned())
+        } else {
+            None
+        })
+    }
+}
+
+pub struct DatabaseQuestService {
+    pool: PgPool,
+}
+
+impl DatabaseQuestService {
+    pub async fn new<S: AsRef<str>>(
+        address: S,
+        db_name: S,
+        credentials: Credentials,
+    ) -> Result<Self, Error> {
+        let pool = PgPoolOptions::new()
+            .max_connections(20)
+            .connect(
+                format!(
+                    "postgres://{}:{}@{}/{}",
+                    credentials.username,
+                    credentials.password,
+                    address.as_ref(),
+                    db_name.as_ref()
+                )
+                .as_str(),
+            )
+            .await?;
+
+        // sqlx::migrate!().run(&pool).await?;
+
+        Ok(Self { pool })
+    }
+}
+
+#[async_trait]
+impl QuestService for DatabaseQuestService {
+    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
+        Ok(
+            sqlx::query_as::<_, QuestItem>("SELECT id, name FROM quests")
+                .fetch_all(&self.pool)
+                .await?
+                .into_boxed_slice(),
+        )
+    }
+
+    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
+        Ok(
+            sqlx::query_as::<_, Quest>("SELECT id, name, description FROM quests WHERE id = $1")
+                .bind(&quest_id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
+    }
+
+    async fn quest_exists(&self, quest_id: &str) -> Result<bool, Error> {
+        Ok(
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM quests WHERE id = $1)")
+                .bind(&quest_id)
+                .fetch_one(&self.pool)
+                .await
+                .unwrap(),
+        )
     }
 
     async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {

@@ -8,3 +8,5 @@ codequest-common = { path = "../common/" }
 rocket = { workspace = true, features = ["json"] }
 serde = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
+sqlx = { workspace = true }
+dotenv = { workspace = true }

@@ -1,7 +1,10 @@
-use std::{fs::DirBuilder, sync::Arc};
+use std::{env, fs::DirBuilder, sync::Arc};
 
-use codequest_common::{Error, Quest, QuestItem, load_secret_key, services::QuestService};
-use codequest_quest_service::FileQuestService;
+use codequest_common::{
+    Credentials, Error, Quest, QuestItem, load_secret_key, services::QuestService,
+};
+use codequest_quest_service::DatabaseQuestService;
+use dotenv::dotenv;
 use rocket::{
     State, catchers,
     response::{
@@ -13,7 +16,6 @@ use rocket::{
 };
 
 pub const RUN_DIR: &'static str = "./run";
-pub const QUESTS_FILE: &'static str = "./run/quests.json";
 pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
 
 pub const QUESTS_DIR: &'static str = "./run/quests";
@@ -82,6 +84,16 @@ fn catch_all() -> &'static str {
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    dotenv().ok();
+
+    let db_credentials = {
+        let username = env::var("POSTGRES_USER").expect("POSTGRES_USER not set");
+        let password = env::var("POSTGRES_PASSWORD").expect("POSTGRES_PASSWORD not set");
+        Credentials::new(username, password)
+    };
+    let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
+    let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
+
     DirBuilder::new()
         .recursive(true)
         .create(&QUESTS_DIR)
@@ -94,16 +106,17 @@ async fn main() -> Result<(), rocket::Error> {
         ))
         .merge(("port", 8002));
 
+    let quest_service = DatabaseQuestService::new(&db_address, &db_name, db_credentials)
+        .await
+        .expect("failed to start DatabaseQuestService");
+
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])
         .mount(
             "/quest",
             routes![list_quests, get_quest, get_input, get_answer, verify_answer],
         )
-        .manage(
-            Arc::new(FileQuestService::new(&QUESTS_FILE).expect("failed to start QuestService"))
-                as Arc<dyn QuestService>,
-        )
+        .manage(Arc::new(quest_service) as Arc<dyn QuestService>)
         .launch()
         .await?;
 

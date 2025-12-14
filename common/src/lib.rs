@@ -1,5 +1,6 @@
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 use std::{fs, io, path::Path};
 
 mod credentials;
@@ -9,10 +10,12 @@ pub mod services;
 pub use credentials::Credentials;
 pub use error::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
 pub struct Quest {
     #[serde(flatten)]
+    #[sqlx(flatten)]
     pub item: QuestItem,
+    #[sqlx(rename = "description")]
     pub text: String,
 }
 
@@ -25,17 +28,17 @@ impl Quest {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
 pub struct QuestItem {
-    pub name: String,
     pub id: String,
+    pub name: String,
 }
 
 impl QuestItem {
-    pub fn new<S: AsRef<str>>(name: S, id: S) -> Self {
+    pub fn new<S: AsRef<str>>(id: S, name: S) -> Self {
         Self {
-            name: name.as_ref().to_owned(),
             id: id.as_ref().to_owned(),
+            name: name.as_ref().to_owned(),
         }
     }
 }
