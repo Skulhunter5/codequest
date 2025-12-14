@@ -6,7 +6,7 @@
     <p>{{quest.text}}</p>
     <br>
     {{#if user}}
-        <p>Get <a href="/quest/{{quest.id}}/input">your input</a> for this quest!</p>
+        <p>Get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> for this quest!</p>
         <br>
         <form method="POST" action="/quest/{{quest.id}}/answer">
             <label>Answer</label>
