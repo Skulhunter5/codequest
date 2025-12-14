@@ -7,3 +7,5 @@ rocket = "0.5"
 serde = "1.0"
 argon2 = "0.5"
 reqwest = "0.12"
+sqlx = { version = "0.6", features = ["runtime-tokio-rustls", "postgres", "migrate"] }
+dotenv = "0.15"

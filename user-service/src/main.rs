@@ -1,12 +1,12 @@
-use std::{fs::DirBuilder, sync::Arc};
+use std::{env, fs::DirBuilder, sync::Arc};
 
 use codequest_common::{load_or_generate_salt, load_secret_key, services::UserService};
-use codequest_user_service::{FileUserService, UserCredentials};
+use codequest_user_service::{Credentials, DatabaseUserService, UserCredentials};
+use dotenv::dotenv;
 use rocket::{State, http, routes, serde::json::Json};
 
 pub const RUN_DIR: &'static str = "./run";
 pub const SALT_FILE: &'static str = "./run/salt";
-pub const USERS_FILE: &'static str = "./run/users.json";
 pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
 
 #[rocket::get("/<username>")]
@@ -41,10 +41,6 @@ async fn verify_password(
     credentials: Json<UserCredentials<'_>>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> (http::Status, &'static str) {
-    println!(
-        "credentials: username='{}', password='{}'",
-        credentials.username, credentials.password
-    );
     if user_service
         .verify_password(credentials.username, credentials.password)
         .await
@@ -58,6 +54,16 @@ async fn verify_password(
 // TODO: restrict valid usernames
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    dotenv().ok();
+
+    let db_credentials = {
+        let username = env::var("POSTGRES_USER").expect("POSTGRES_USER not set");
+        let password = env::var("POSTGRES_PASSWORD").expect("POSTGRES_PASSWORD not set");
+        Credentials { username, password }
+    };
+    let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
+    let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
+
     DirBuilder::new()
         .recursive(true)
         .create(&RUN_DIR)
@@ -71,11 +77,13 @@ async fn main() -> Result<(), rocket::Error> {
         ))
         .merge(("port", 8001));
 
+    let user_service = DatabaseUserService::new(&db_address, &db_name, db_credentials, salt)
+        .await
+        .expect("failed to start DatabaseUserService");
+
     rocket::custom(&rocket_config)
         .mount("/user", routes![get_user, add_user, verify_password])
-        .manage(Arc::new(
-            FileUserService::new(salt, &USERS_FILE).expect("failed to start UserService"),
-        ) as Arc<dyn UserService>)
+        .manage(Arc::new(user_service) as Arc<dyn UserService>)
         .launch()
         .await?;
 

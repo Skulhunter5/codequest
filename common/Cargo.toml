@@ -7,3 +7,4 @@ edition = "2024"
 rocket = { workspace = true }
 serde = { workspace = true }
 argon2 = { workspace = true }
+sqlx = { workspace = true }

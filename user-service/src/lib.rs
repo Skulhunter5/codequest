@@ -6,7 +6,7 @@ use std::{
 };
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
-use codequest_common::services::UserService;
+use codequest_common::{Error, services::UserService};
 use reqwest::{Client, StatusCode};
 use rocket::{
     async_trait,
@@ -14,6 +14,7 @@ use rocket::{
     tokio::{fs::File as TokioFile, io::AsyncWriteExt as _, sync::RwLock},
 };
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 
 // TODO: restrict valid usernames
 pub struct InMemoryUserService {
@@ -143,6 +144,89 @@ impl UserService for FileUserService {
 
     async fn user_exists(&self, username: &str) -> bool {
         self.in_memory_user_service.user_exists(username).await
+    }
+}
+
+pub struct Credentials {
+    pub username: String,
+    pub password: String,
+}
+
+pub struct DatabaseUserService {
+    salt: SaltString,
+    pool: PgPool,
+}
+
+impl DatabaseUserService {
+    pub async fn new<S: AsRef<str>>(
+        address: S,
+        db_name: S,
+        credentials: Credentials,
+        salt: SaltString,
+    ) -> Result<Self, Error> {
+        let pool = PgPoolOptions::new()
+            .max_connections(20)
+            .connect(
+                format!(
+                    "postgres://{}:{}@{}/{}",
+                    credentials.username,
+                    credentials.password,
+                    address.as_ref(),
+                    db_name.as_ref()
+                )
+                .as_str(),
+            )
+            .await?;
+
+        sqlx::migrate!().run(&pool).await?;
+
+        Ok(Self { salt, pool })
+    }
+
+    fn hash_password(&self, password: &str) -> String {
+        Argon2::default()
+            .hash_password(password.as_bytes(), self.salt.as_salt())
+            .unwrap()
+            .to_string()
+    }
+}
+
+#[async_trait]
+impl UserService for DatabaseUserService {
+    async fn verify_password(&self, username: &str, password: &str) -> bool {
+        let password_hash = self.hash_password(password);
+        sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE (username = $1 AND password_hash = $2))",
+        )
+        .bind(&username)
+        .bind(&password_hash)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap()
+    }
+
+    async fn add_user(&self, username: &str, password: &str) -> bool {
+        let password_hash = self.hash_password(password);
+        match sqlx::query("INSERT INTO users (username, password_hash) VALUES ($1, $2)")
+            .bind(&username)
+            .bind(&password_hash)
+            .execute(&self.pool)
+            .await
+        {
+            Ok(_) => true,
+            Err(sqlx::Error::Database(db_error)) if db_error.constraint() == Some("users_pkey") => {
+                false
+            }
+            e => panic!("DatabaseError: {:?}", e),
+        }
+    }
+
+    async fn user_exists(&self, username: &str) -> bool {
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
+            .bind(&username)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap()
     }
 }
 
