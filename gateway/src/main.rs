@@ -2,8 +2,9 @@ use std::{fs::DirBuilder, sync::Arc};
 
 use codequest_common::{
     load_secret_key,
-    services::{QuestService, UserService},
+    services::{ProgressionService, QuestService, UserService},
 };
+use codequest_progression_service::BackendProgressionService;
 use codequest_quest_service::BackendQuestService;
 use codequest_user_service::BackendUserService;
 use rocket::routes;
@@ -57,6 +58,9 @@ async fn main() -> Result<(), rocket::Error> {
             Arc::new(BackendQuestService::new("http://localhost:8002/quest"))
                 as Arc<dyn QuestService>,
         )
+        .manage(Arc::new(BackendProgressionService::new(
+            "http://localhost:8003/progression",
+        )) as Arc<dyn ProgressionService>)
         .launch()
         .await?;
 

@@ -56,6 +56,14 @@ impl QuestService for ConstQuestService {
             .cloned())
     }
 
+    async fn quest_exists(&self, quest_id: &str) -> Result<bool, Error> {
+        Ok(self
+            .quests
+            .iter()
+            .find(|quest| quest.item.id == quest_id)
+            .is_some())
+    }
+
     async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
         Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
@@ -63,18 +71,9 @@ impl QuestService for ConstQuestService {
         )))
     }
 
-    async fn verify_answer(
-        &self,
-        quest_id: &str,
-        _username: &str,
-        answer: &str,
-    ) -> Result<Option<bool>, Error> {
-        Ok(if let Some(_) = self.get_quest(quest_id).await? {
-            if answer == quest_id {
-                Some(true)
-            } else {
-                Some(false)
-            }
+    async fn get_answer(&self, quest_id: &str, _username: &str) -> Result<Option<String>, Error> {
+        Ok(if self.quest_exists(&quest_id).await? {
+            Some(quest_id.to_owned())
         } else {
             None
         })
@@ -89,6 +88,7 @@ impl FileQuestService {
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let path = path.as_ref();
         let quests = json::from_str(std::fs::read_to_string(&path)?.as_str())?;
+        println!(">> quests loaded: {:?}", &quests);
         Ok(Self { quests })
     }
 }
@@ -119,18 +119,9 @@ impl QuestService for FileQuestService {
         )))
     }
 
-    async fn verify_answer(
-        &self,
-        quest_id: &str,
-        _username: &str,
-        answer: &str,
-    ) -> Result<Option<bool>, Error> {
-        Ok(if let Some(_) = self.get_quest(quest_id).await? {
-            if answer == quest_id {
-                Some(true)
-            } else {
-                Some(false)
-            }
+    async fn get_answer(&self, quest_id: &str, _username: &str) -> Result<Option<String>, Error> {
+        Ok(if self.quest_exists(&quest_id).await? {
+            Some(quest_id.to_owned())
         } else {
             None
         })
@@ -169,10 +160,10 @@ impl QuestService for BackendQuestService {
         }
     }
 
-    async fn get_quest(&self, id: &str) -> Result<Option<Quest>, Error> {
+    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
         let response = self
             .client
-            .get(format!("{}/{}", &self.address, id))
+            .get(format!("{}/{}", &self.address, quest_id))
             .send()
             .await
             .map_err(|_| Error::ServerUnreachable)?;
@@ -197,6 +188,27 @@ impl QuestService for BackendQuestService {
         match response.status() {
             StatusCode::OK => match response.text().await {
                 Ok(input) => Ok(Some(input)),
+                Err(_) => Err(Error::InvalidResponse),
+            },
+            StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn get_answer(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+        let response = self
+            .client
+            .get(format!(
+                "{}/{}/answer/{}",
+                &self.address, quest_id, username
+            ))
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::OK => match response.text().await {
+                Ok(answer) => Ok(Some(answer)),
                 Err(_) => Err(Error::InvalidResponse),
             },
             StatusCode::NOT_FOUND => Ok(None),

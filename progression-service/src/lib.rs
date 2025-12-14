@@ -1,0 +1,246 @@
+use std::{
+    collections::HashMap,
+    fs::File as StdFile,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use codequest_common::{
+    Error,
+    services::{ProgressionService, QuestService},
+};
+use reqwest::{Client, StatusCode};
+use rocket::{
+    async_trait,
+    serde::json::{self, serde_json},
+    tokio::{fs::File as TokioFile, io::AsyncWriteExt as _, sync::RwLock},
+};
+
+pub struct InMemoryProgressionService {
+    user_progress: RwLock<HashMap<String, Vec<String>>>,
+    quest_service: Arc<dyn QuestService>,
+}
+
+impl InMemoryProgressionService {
+    pub fn new(quest_service: Arc<dyn QuestService>) -> Self {
+        let user_progress = RwLock::new(HashMap::new());
+        Self {
+            user_progress,
+            quest_service,
+        }
+    }
+
+    pub fn with(
+        user_progress: HashMap<String, Vec<String>>,
+        quest_service: Arc<dyn QuestService>,
+    ) -> Self {
+        Self {
+            user_progress: RwLock::new(user_progress),
+            quest_service,
+        }
+    }
+}
+
+#[async_trait]
+impl ProgressionService for InMemoryProgressionService {
+    async fn has_user_completed_quest(
+        &self,
+        username: &str,
+        quest_id: &str,
+    ) -> Result<bool, Error> {
+        let users = self.user_progress.read().await;
+        Ok(if let Some(completed_quests) = users.get(username) {
+            completed_quests
+                .iter()
+                .find(|quest| *quest == quest_id)
+                .is_some()
+        } else {
+            false
+        })
+    }
+
+    async fn submit_answer(
+        &self,
+        username: &str,
+        quest_id: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        if self.has_user_completed_quest(username, quest_id).await? {
+            return Ok(None);
+        }
+        let res = self
+            .quest_service
+            .verify_answer(quest_id, username, answer)
+            .await?;
+        if Some(true) == res {
+            let mut user_progress = self.user_progress.write().await;
+            if let Some(completed_quests) = user_progress.get_mut(username) {
+                completed_quests.push(quest_id.to_owned());
+            } else {
+                user_progress.insert(username.to_owned(), vec![quest_id.to_owned()]);
+            }
+        }
+
+        return Ok(res);
+    }
+}
+
+pub struct FileProgressionService {
+    path: PathBuf,
+    in_memory_progression_service: InMemoryProgressionService,
+}
+
+impl FileProgressionService {
+    pub fn new<P: AsRef<Path>>(path: P, quest_service: Arc<dyn QuestService>) -> io::Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let users = match StdFile::open(&path) {
+            Ok(file) => {
+                let mut reader = serde_json::Deserializer::from_reader(file).into_iter();
+                let users = match reader.next() {
+                    Some(users) => users,
+                    None => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            "invalid input: no json object in file",
+                        ));
+                    }
+                }?;
+                if reader.next().is_some() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "invalid input: too many json objects in file",
+                    ));
+                }
+
+                users
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => HashMap::new(),
+            Err(e) => return Err(e),
+        };
+
+        let in_memory_progression_service = InMemoryProgressionService::with(users, quest_service);
+
+        Ok(Self {
+            path,
+            in_memory_progression_service,
+        })
+    }
+
+    async fn save(&self) -> Result<(), std::io::Error> {
+        let mut file = TokioFile::create(&self.path).await?;
+
+        let user_progress = self
+            .in_memory_progression_service
+            .user_progress
+            .read()
+            .await;
+        let json_string = json::to_string(&*user_progress)?;
+        file.write_all(json_string.as_bytes()).await
+    }
+}
+
+#[async_trait]
+impl ProgressionService for FileProgressionService {
+    async fn has_user_completed_quest(
+        &self,
+        username: &str,
+        quest_id: &str,
+    ) -> Result<bool, Error> {
+        self.in_memory_progression_service
+            .has_user_completed_quest(username, quest_id)
+            .await
+    }
+
+    async fn submit_answer(
+        &self,
+        username: &str,
+        quest_id: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        let res = self
+            .in_memory_progression_service
+            .submit_answer(username, quest_id, answer)
+            .await?;
+        if Some(true) == res {
+            if let Err(e) = self.save().await {
+                eprintln!(
+                    "FileUserService: failed to write user_progress to file: {}",
+                    e
+                );
+            }
+        }
+        return Ok(res);
+    }
+}
+
+pub struct BackendProgressionService {
+    address: String,
+    client: Client,
+}
+
+impl BackendProgressionService {
+    pub fn new<S: AsRef<str>>(address: S) -> Self {
+        Self {
+            address: address.as_ref().to_owned(),
+            client: Client::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl ProgressionService for BackendProgressionService {
+    async fn has_user_completed_quest(
+        &self,
+        username: &str,
+        quest_id: &str,
+    ) -> Result<bool, Error> {
+        let response = self
+            .client
+            .get(format!("{}/{}/{}", &self.address, username, quest_id))
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::OK => match response.text().await {
+                Ok(user_has_completed_quest) => user_has_completed_quest
+                    .parse::<bool>()
+                    .map_err(|_| Error::InvalidResponse),
+                Err(_) => Err(Error::InvalidResponse),
+            },
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn submit_answer(
+        &self,
+        username: &str,
+        quest_id: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        let response = self
+            .client
+            .post(format!(
+                "{}/{}/{}/answer",
+                &self.address, username, quest_id
+            ))
+            .body(answer.to_owned())
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::OK => match response.text().await {
+                Ok(answer_was_correct) => Ok(Some(
+                    answer_was_correct
+                        .parse::<bool>()
+                        .map_err(|_| Error::InvalidResponse)?,
+                )),
+                Err(_) => Err(Error::InvalidResponse),
+            },
+            StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+}

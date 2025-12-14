@@ -1,6 +1,9 @@
 use std::{path::Path, sync::Arc};
 
-use codequest_common::{Error, QuestItem, services::QuestService};
+use codequest_common::{
+    Error, QuestItem,
+    services::{ProgressionService, QuestService},
+};
 use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirect};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
@@ -113,29 +116,59 @@ impl<'a> From<&'a QuestItem> for QuestContext<'a> {
     }
 }
 
-#[rocket::get("/quest/<id>")]
+#[rocket::get("/quest/<quest_id>")]
 pub async fn quest(
-    id: &str,
+    quest_id: &str,
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
+    progression_service: &State<Arc<dyn ProgressionService>>,
 ) -> Result<Result<Template, http::Status>, Error> {
-    Ok(if let Some(quest) = quest_service.get_quest(id).await? {
-        Ok(Template::render(
-            "quest",
-            PageContext::new(
-                &user,
-                context! {
-                    quest: context! {
-                        name: &quest.item.name,
-                        id: &quest.item.id,
-                        text: &quest.text,
-                    },
+    Ok(
+        if let Some(quest) = quest_service.get_quest(&quest_id).await? {
+            Ok(
+                if let Some(present_user) = &user
+                    && progression_service
+                        .has_user_completed_quest(&present_user.username, &quest_id)
+                        .await?
+                {
+                    let quest_answer = quest_service
+                        .get_answer(&quest_id, &present_user.username)
+                        .await?
+                        .ok_or(Error::IncoherentState)?;
+                    Template::render(
+                        "quest",
+                        PageContext::new(
+                            &user,
+                            context! {
+                                quest: context! {
+                                    name: &quest.item.name,
+                                    id: &quest.item.id,
+                                    text: &quest.text,
+                                    answer: &quest_answer,
+                                },
+                            },
+                        ),
+                    )
+                } else {
+                    Template::render(
+                        "quest",
+                        PageContext::new(
+                            &user,
+                            context! {
+                                quest: context! {
+                                    name: &quest.item.name,
+                                    id: &quest.item.id,
+                                    text: &quest.text,
+                                },
+                            },
+                        ),
+                    )
                 },
-            ),
-        ))
-    } else {
-        Err(http::Status::NotFound)
-    })
+            )
+        } else {
+            Err(http::Status::NotFound)
+        },
+    )
 }
 
 #[rocket::get("/quest/<id>/input")]
@@ -166,14 +199,15 @@ pub async fn quest_answer(
     quest_id: &str,
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
+    progression_service: &State<Arc<dyn ProgressionService>>,
 ) -> Result<Result<Template, http::Status>, Error> {
     let quest = match quest_service.get_quest(&quest_id).await? {
         Some(quest) => quest,
         None => return Ok(Err(http::Status::NotFound)),
     };
     Ok(if let Some(user) = user {
-        match quest_service
-            .verify_answer(&quest_id, &user.username, &form.answer)
+        match progression_service
+            .submit_answer(&user.username, &quest_id, &form.answer)
             .await?
         {
             Some(answer_was_correct) => Ok(Template::render(

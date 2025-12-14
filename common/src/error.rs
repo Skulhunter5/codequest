@@ -4,6 +4,7 @@ use rocket::{Response, response::Responder};
 pub enum Error {
     InvalidResponse,
     ServerUnreachable,
+    IncoherentState,
 }
 
 impl<'r> Responder<'r, 'static> for Error {

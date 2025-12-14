@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [ "common","gateway", "quest-service", "user-service"]
+members = ["common","gateway","quest-service","user-service","progression-service"]
 
 [workspace.dependencies]
 rocket = "0.5"

@@ -1,0 +1,11 @@
+[package]
+name = "codequest-progression-service"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+codequest-common = { path = "../common/" }
+codequest-quest-service = { path = "../quest-service/" }
+rocket = { workspace = true, features = ["json"] }
+serde = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }

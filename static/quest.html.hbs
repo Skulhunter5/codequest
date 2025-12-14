@@ -6,13 +6,18 @@
     <p>{{quest.text}}</p>
     <br>
     {{#if user}}
-        <p>Get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> for this quest!</p>
-        <br>
-        <form method="POST" action="/quest/{{quest.id}}/answer">
-            <label>Answer</label>
-            <input type="text" name="answer"></input>
-            <button type="submit" class="submit-btn">Submit</button>
-        </form>
+        {{#if quest.answer}}
+            <p>You successfully completed this quest. Your answer was <strong>{{quest.answer}}</strong>.</p>
+            <p>Even though you're done with this quest, you can still get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> again.</p>
+        {{else}}
+            <p>Get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> for this quest!</p>
+            <br>
+            <form method="POST" action="/quest/{{quest.id}}/answer">
+                <label>Answer</label>
+                <input type="text" name="answer"></input>
+                <button type="submit" class="submit-btn">Submit</button>
+            </form>
+        {{/if}}
     {{else}}
         <p><a href="/login">Log In</a> to attempt completing this quest.</p>
     {{/if}}
