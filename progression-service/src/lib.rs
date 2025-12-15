@@ -7,7 +7,7 @@ use std::{
 };
 
 use codequest_common::{
-    Error,
+    Credentials, Error,
     services::{ProgressionService, QuestService},
 };
 use reqwest::{Client, StatusCode};
@@ -16,6 +16,7 @@ use rocket::{
     serde::json::{self, serde_json},
     tokio::{fs::File as TokioFile, io::AsyncWriteExt as _, sync::RwLock},
 };
+use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub struct InMemoryProgressionService {
     user_progress: RwLock<HashMap<String, Vec<String>>>,
@@ -170,6 +171,92 @@ impl ProgressionService for FileProgressionService {
                 );
             }
         }
+        return Ok(res);
+    }
+}
+
+pub struct DatabaseProgressionService {
+    pool: PgPool,
+    quest_service: Arc<dyn QuestService>,
+}
+
+impl DatabaseProgressionService {
+    pub async fn new<S: AsRef<str>>(
+        quest_service: Arc<dyn QuestService>,
+        address: S,
+        db_name: S,
+        credentials: Credentials,
+    ) -> Result<Self, Error> {
+        let pool = PgPoolOptions::new()
+            .max_connections(20)
+            .connect(
+                format!(
+                    "postgres://{}:{}@{}/{}",
+                    credentials.username,
+                    credentials.password,
+                    address.as_ref(),
+                    db_name.as_ref()
+                )
+                .as_str(),
+            )
+            .await?;
+
+        sqlx::migrate!().run(&pool).await?;
+
+        Ok(Self {
+            pool,
+            quest_service,
+        })
+    }
+}
+
+#[async_trait]
+impl ProgressionService for DatabaseProgressionService {
+    async fn has_user_completed_quest(
+        &self,
+        username: &str,
+        quest_id: &str,
+    ) -> Result<bool, Error> {
+        Ok(sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM progression WHERE (quest_id = $1 AND username = $2))",
+        )
+        .bind(&quest_id)
+        .bind(&username)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap())
+    }
+
+    async fn submit_answer(
+        &self,
+        username: &str,
+        quest_id: &str,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        if self.has_user_completed_quest(username, quest_id).await? {
+            return Ok(None);
+        }
+        let res = self
+            .quest_service
+            .verify_answer(quest_id, username, answer)
+            .await?;
+        if Some(true) == res {
+            match sqlx::query("INSERT INTO progression (quest_id, username) VALUES ($1, $2)")
+                .bind(&quest_id)
+                .bind(&username)
+                .execute(&self.pool)
+                .await
+            {
+                Ok(_) => (),
+                Err(sqlx::Error::Database(db_error))
+                    if db_error.constraint() == Some("progression_pkey") =>
+                {
+                    return Ok(None);
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
         return Ok(res);
     }
 }

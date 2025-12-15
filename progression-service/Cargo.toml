@@ -9,3 +9,5 @@ codequest-quest-service = { path = "../quest-service/" }
 rocket = { workspace = true, features = ["json"] }
 serde = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
+sqlx = { workspace = true }
+dotenv = { workspace = true }

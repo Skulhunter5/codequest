@@ -1,11 +1,12 @@
-use std::{fs::DirBuilder, sync::Arc};
+use std::{env, fs::DirBuilder, sync::Arc};
 
 use codequest_common::{
-    Error, load_secret_key,
+    Credentials, Error, load_secret_key,
     services::{ProgressionService, QuestService},
 };
-use codequest_progression_service::InMemoryProgressionService;
+use codequest_progression_service::DatabaseProgressionService;
 use codequest_quest_service::BackendQuestService;
+use dotenv::dotenv;
 use rocket::{
     State, catchers,
     response::{content::RawText, status},
@@ -49,6 +50,18 @@ fn catch_all() -> &'static str {
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    dotenv().ok();
+
+    let db_credentials = {
+        let username = env::var("DB_USERNAME_PROGRESSION_SERVICE")
+            .expect("DB_USERNAME_PROGRESSION_SERVICE not set");
+        let password = env::var("DB_PASSWORD_PROGRESSION_SERVICE")
+            .expect("DB_PASSWORD_PROGRESSION_SERVICE not set");
+        Credentials::new(username, password)
+    };
+    let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
+    let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
+
     DirBuilder::new()
         .recursive(true)
         .create(&RUN_DIR)
@@ -64,15 +77,18 @@ async fn main() -> Result<(), rocket::Error> {
     let quest_service =
         Arc::new(BackendQuestService::new("http://localhost:8002/quest")) as Arc<dyn QuestService>;
 
+    let progression_service =
+        DatabaseProgressionService::new(quest_service, &db_address, &db_name, db_credentials)
+            .await
+            .expect("failed to start DatabaseQuestService");
+
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])
         .mount(
             "/progression",
             routes![has_user_completed_quest, submit_answer],
         )
-        .manage(
-            Arc::new(InMemoryProgressionService::new(quest_service)) as Arc<dyn ProgressionService>
-        )
+        .manage(Arc::new(progression_service) as Arc<dyn ProgressionService>)
         .launch()
         .await?;
 
