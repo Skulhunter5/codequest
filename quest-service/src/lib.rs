@@ -3,7 +3,7 @@ use std::{io, path::Path};
 use codequest_common::{Credentials, Error, Quest, QuestItem, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
-use sqlx::{postgres::PgPoolOptions, Executor, PgPool};
+use sqlx::{Executor, PgPool, postgres::PgPoolOptions};
 
 pub struct ConstQuestService {
     quests: Box<[Quest]>,
