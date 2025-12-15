@@ -3,7 +3,7 @@ use std::{io, path::Path};
 use codequest_common::{Credentials, Error, Quest, QuestItem, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{postgres::PgPoolOptions, Executor, PgPool};
 
 pub struct ConstQuestService {
     quests: Box<[Quest]>,
@@ -153,7 +153,7 @@ impl DatabaseQuestService {
             )
             .await?;
 
-        // sqlx::migrate!().run(&pool).await?;
+        sqlx::migrate!().run(&pool).await?;
 
         Ok(Self { pool })
     }

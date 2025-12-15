@@ -59,8 +59,8 @@ async fn main() -> Result<(), rocket::Error> {
     dotenv().ok();
 
     let db_credentials = {
-        let username = env::var("POSTGRES_USER").expect("POSTGRES_USER not set");
-        let password = env::var("POSTGRES_PASSWORD").expect("POSTGRES_PASSWORD not set");
+        let username = env::var("DB_USERNAME_USER_SERVICE").expect("DB_USERNAME_USER_SERVICE not set");
+        let password = env::var("DB_PASSWORD_USER_SERVICE").expect("DB_PASSWORD_USER_SERVICE not set");
         Credentials::new(username, password)
     };
     let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
