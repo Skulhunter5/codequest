@@ -7,9 +7,12 @@ use codequest_user_service::{DatabaseUserService, UserCredentials};
 use dotenv::dotenv;
 use rocket::{State, http, routes, serde::json::Json};
 
-pub const RUN_DIR: &'static str = "./run";
-pub const SALT_FILE: &'static str = "./run/salt";
-pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+mod defaults {
+    pub const RUN_DIR: &'static str = "./run";
+    pub const SALT_FILE: &'static str = "./run/salt";
+    pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+    pub const PORT: u16 = 8000;
+}
 
 #[rocket::get("/<username>")]
 async fn get_user(
@@ -70,16 +73,28 @@ async fn main() -> Result<(), rocket::Error> {
 
     DirBuilder::new()
         .recursive(true)
-        .create(&RUN_DIR)
+        .create(defaults::RUN_DIR)
         .expect("failed to create run dir");
-    let salt = load_or_generate_salt(&SALT_FILE);
+
+    let salt = load_or_generate_salt(
+        env::var("SALT_FILE").unwrap_or_else(|_| defaults::SALT_FILE.to_owned()),
+    );
+
+    let secret_key = load_secret_key(
+        env::var("SECRET_KEY_FILE").unwrap_or_else(|_| defaults::SECRET_KEY_FILE.to_owned()),
+    )
+    .expect("failed to load secret key");
+
+    let port = env::var("USER_SERVICE_PORT")
+        .map(|port| {
+            port.parse::<u16>()
+                .expect(format!("invalid USER_SERVICE_PORT: '{}'", port).as_str())
+        })
+        .unwrap_or(defaults::PORT);
 
     let rocket_config = rocket::Config::figment()
-        .merge((
-            "secret_key",
-            load_secret_key(&SECRET_KEY_FILE).expect("failed to load secret key"),
-        ))
-        .merge(("port", 8001));
+        .merge(("secret_key", secret_key))
+        .merge(("port", port));
 
     let user_service = DatabaseUserService::new(&db_address, &db_name, db_credentials, salt)
         .await

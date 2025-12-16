@@ -13,9 +13,11 @@ use rocket::{
     routes,
 };
 
-pub const RUN_DIR: &'static str = "./run";
-pub const USER_PROGRESS_FILE: &'static str = "./run/user-progress.json";
-pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+mod defaults {
+    pub const RUN_DIR: &'static str = "./run";
+    pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+    pub const PORT: u16 = 8000;
+}
 
 #[rocket::get("/<username>/<quest_id>")]
 async fn has_user_completed_quest(
@@ -64,18 +66,30 @@ async fn main() -> Result<(), rocket::Error> {
 
     DirBuilder::new()
         .recursive(true)
-        .create(&RUN_DIR)
+        .create(defaults::RUN_DIR)
         .expect("failed to create run dir");
 
+    let secret_key = load_secret_key(
+        env::var("SECRET_KEY_FILE").unwrap_or_else(|_| defaults::SECRET_KEY_FILE.to_owned()),
+    )
+    .expect("failed to load secret key");
+
+    let port = env::var("PROGRESSION_SERVICE_PORT")
+        .map(|port| {
+            port.parse::<u16>()
+                .expect(format!("invalid PROGRESSION_SERVICE_PORT: '{}'", port).as_str())
+        })
+        .unwrap_or(defaults::PORT);
+
     let rocket_config = rocket::Config::figment()
-        .merge((
-            "secret_key",
-            load_secret_key(&SECRET_KEY_FILE).expect("failed to load secret key"),
-        ))
-        .merge(("port", 8003));
+        .merge(("secret_key", secret_key))
+        .merge(("port", port));
+
+    let quest_service_address =
+        env::var("QUEST_SERVICE_ADDRESS").expect("QUEST_SERVICE_ADDRESS not set");
 
     let quest_service =
-        Arc::new(BackendQuestService::new("http://localhost:8002/quest")) as Arc<dyn QuestService>;
+        Arc::new(BackendQuestService::new(quest_service_address)) as Arc<dyn QuestService>;
 
     let progression_service =
         DatabaseProgressionService::new(quest_service, &db_address, &db_name, db_credentials)

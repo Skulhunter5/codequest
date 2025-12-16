@@ -1,7 +1,15 @@
+secrets:
+  secret_key:
+    file: ./secrets/secret_key
+  salt:
+    file: ./secrets/salt
+
 services:
   postgres:
     image: postgres:18
     container_name: codequest-postgres
+    networks:
+      - codequest-net
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -15,5 +23,78 @@ services:
     volumes:
       - ./run/pgdata:/var/lib/postgresql
       - ./db-init:/docker-entrypoint-initdb.d
+  gateway:
+    image: codequest-gateway
+    container_name: codequest-gateway
+    depends_on:
+      - user-service
+      - quest-service
+      - progression-service
+    networks:
+      - codequest-net
+      - public-net
     ports:
-      - 5432:5432
+      - 8000:8000
+    secrets:
+      - secret_key
+    environment:
+      - USER_SERVICE_ADDRESS=http://codequest-user-service:8000/user
+      - QUEST_SERVICE_ADDRESS=http://codequest-quest-service:8000/quest
+      - PROGRESSION_SERVICE_ADDRESS=http://codequest-progression-service:8000/progression
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+  user-service:
+    image: codequest-user-service
+    container_name: codequest-user-service
+    depends_on:
+      - postgres
+    networks:
+      - codequest-net
+    secrets:
+      - secret_key
+      - salt
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DB_ADDRESS=codequest-postgres:5432
+      - DB_USERNAME_USER_SERVICE=${DB_USERNAME_USER_SERVICE}
+      - DB_PASSWORD_USER_SERVICE=${DB_PASSWORD_USER_SERVICE}
+      - SALT_FILE=/run/secrets/salt
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+  quest-service:
+    image: codequest-quest-service
+    container_name: codequest-quest-service
+    depends_on:
+      - postgres
+    networks:
+      - codequest-net
+    secrets:
+      - secret_key
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DB_ADDRESS=codequest-postgres:5432
+      - DB_USERNAME_QUEST_SERVICE=${DB_USERNAME_QUEST_SERVICE}
+      - DB_PASSWORD_QUEST_SERVICE=${DB_PASSWORD_QUEST_SERVICE}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+  progression-service:
+    image: codequest-progression-service
+    container_name: codequest-progression-service
+    depends_on:
+      - postgres
+      - quest-service
+    networks:
+      - codequest-net
+    secrets:
+      - secret_key
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DB_ADDRESS=codequest-postgres:5432
+      - QUEST_SERVICE_ADDRESS=http://codequest-quest-service:8000/quest
+      - DB_USERNAME_PROGRESSION_SERVICE=${DB_USERNAME_PROGRESSION_SERVICE}
+      - DB_PASSWORD_PROGRESSION_SERVICE=${DB_PASSWORD_PROGRESSION_SERVICE}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+
+networks:
+  codequest-net:
+    driver: bridge
+    internal: true
+  public-net:
+    driver: bridge

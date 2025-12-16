@@ -1,2 +1,8 @@
 [global]
 template_dir = "static/"
+
+[debug]
+address = "127.0.0.1"
+
+[release]
+address = "0.0.0.0"

@@ -1,0 +1,18 @@
+# exclude secrets
+secrets/
+.env
+
+# exclude local testing
+run/
+
+# exclude build artifacts
+Cargo.lock
+target/
+
+# exclude build-systems
+Makefile
+compose.yml
+shell.nix
+
+# exclude other
+db-init/
