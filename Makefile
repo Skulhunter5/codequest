@@ -2,6 +2,9 @@ all:
 
 docker_build:
 	docker build -t codequest-gateway -f gateway/Dockerfile .
+	docker build -t codequest-user-service -f user-service/Dockerfile .
+	docker build -t codequest-quest-service -f quest-service/Dockerfile .
+	docker build -t codequest-progression-service -f progression-service/Dockerfile .
 
 single_dockerfile_test:
 	docker build .
