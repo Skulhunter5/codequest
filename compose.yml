@@ -38,8 +38,8 @@ services:
     container_name: codequest-bootstrap
     networks:
       - codequest-net
-  environment:
-    - NATS_ADDRESS=codequest-nats:4222
+    environment:
+      - NATS_ADDRESS=codequest-nats:4222
   gateway:
     image: codequest-gateway
     container_name: codequest-gateway
