@@ -6,6 +6,8 @@ pub enum Error {
     ServerUnreachable,
     IncoherentState,
     Sqlx(sqlx::Error),
+    Nats(async_nats::Error),
+    Json(serde_json::Error),
 }
 
 impl From<sqlx::migrate::MigrateError> for Error {
@@ -17,6 +19,36 @@ impl From<sqlx::migrate::MigrateError> for Error {
 impl From<sqlx::Error> for Error {
     fn from(error: sqlx::Error) -> Self {
         Self::Sqlx(error)
+    }
+}
+
+impl From<async_nats::ConnectError> for Error {
+    fn from(error: async_nats::ConnectError) -> Self {
+        Self::Nats(error.into())
+    }
+}
+
+impl From<async_nats::jetstream::context::CreateStreamError> for Error {
+    fn from(error: async_nats::jetstream::context::CreateStreamError) -> Self {
+        Self::Nats(error.into())
+    }
+}
+
+impl From<async_nats::jetstream::context::PublishError> for Error {
+    fn from(error: async_nats::jetstream::context::PublishError) -> Self {
+        Self::Nats(error.into())
+    }
+}
+
+impl From<async_nats::Error> for Error {
+    fn from(error: async_nats::Error) -> Self {
+        Self::Nats(error)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
     }
 }
 

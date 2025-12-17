@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: codequest-postgres
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DB_USERNAME_USER_SERVICE=${DB_USERNAME_USER_SERVICE}
+      - DB_PASSWORD_USER_SERVICE=${DB_PASSWORD_USER_SERVICE}
+      - DB_USERNAME_QUEST_SERVICE=${DB_USERNAME_QUEST_SERVICE}
+      - DB_PASSWORD_QUEST_SERVICE=${DB_PASSWORD_QUEST_SERVICE}
+      - DB_USERNAME_PROGRESSION_SERVICE=${DB_USERNAME_PROGRESSION_SERVICE}
+      - DB_PASSWORD_PROGRESSION_SERVICE=${DB_PASSWORD_PROGRESSION_SERVICE}
+    volumes:
+      - ./run/pgdata:/var/lib/postgresql
+      - ./db-init:/docker-entrypoint-initdb.d
+  nats:
+    image: nats:2.12
+    container_name: codequest-nats
+    command:
+      - "--jetstream"
+      - "--store_dir=/data"
+    ports:
+      - 4222:4222
+      - 8222:8222
+    volumes:
+      - ./run/nats_data:/data

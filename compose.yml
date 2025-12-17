@@ -23,6 +23,23 @@ services:
     volumes:
       - ./run/pgdata:/var/lib/postgresql
       - ./db-init:/docker-entrypoint-initdb.d
+  nats:
+    image: nats:2.12
+    container_name: codequest-nats
+    command:
+      - "--jetstream"
+      - "--store_dir=/data"
+    networks:
+      - codequest-net
+    volumes:
+      - ./run/nats_data:/data
+  bootstrap:
+    image: codequest-bootstrap
+    container_name: codequest-bootstrap
+    networks:
+      - codequest-net
+  environment:
+    - NATS_ADDRESS=codequest-nats:4222
   gateway:
     image: codequest-gateway
     container_name: codequest-gateway

@@ -19,6 +19,16 @@ RUN cargo install --path quest-service
 RUN cargo install --path progression-service
 # RUN cargo build --bin codequest-gateway --bin codequest-user-service --bin codequest-quest-service --bin codequest-progression-service
 
+# codequest-bootstrap
+FROM gcr.io/distroless/cc
+WORKDIR /app
+# COPY --from=builder /usr/local/cargo/bin/codequest-gateway /usr/local/bin/codequest-gateway
+COPY --from=builder /workspace/target/release/codequest-bootstrap /usr/local/bin/codequestbootstrap-
+# RUN chown -R nonroot:nonroot /app
+# USER nonroot:nonroot
+ENTRYPOINT ["codequest-bootstrap"]
+LABEL service=bootstrap
+
 # codequest-gateway
 FROM gcr.io/distroless/cc
 WORKDIR /app
