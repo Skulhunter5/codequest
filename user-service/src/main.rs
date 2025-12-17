@@ -1,7 +1,7 @@
 use std::{env, fs::DirBuilder, sync::Arc};
 
 use codequest_common::{
-    Credentials, load_or_generate_salt, load_secret_key, services::UserService,
+    Credentials, Error, load_or_generate_salt, load_secret_key, services::UserService,
 };
 use codequest_user_service::{DatabaseUserService, UserCredentials};
 use dotenv::dotenv;
@@ -18,42 +18,40 @@ mod defaults {
 async fn get_user(
     username: &str,
     user_service: &State<Arc<dyn UserService>>,
-) -> (http::Status, &'static str) {
-    if user_service.user_exists(username).await {
-        (http::Status::NoContent, "")
+) -> Result<(http::Status, &'static str), Error> {
+    Ok(if user_service.user_exists(username).await? {
+        (http::Status::Ok, "")
     } else {
         (http::Status::NotFound, "")
-    }
+    })
 }
 
 #[rocket::post("/", format = "json", data = "<credentials>")]
 async fn add_user(
     credentials: Json<UserCredentials<'_>>,
     user_service: &State<Arc<dyn UserService>>,
-) -> (http::Status, &'static str) {
-    if user_service
-        .add_user(credentials.username, credentials.password)
-        .await
-    {
-        (http::Status::Created, "")
-    } else {
-        (http::Status::Conflict, "")
-    }
+) -> Result<(http::Status, &'static str), Error> {
+    Ok(
+        if user_service
+            .add_user(credentials.username, credentials.password)
+            .await?
+        {
+            (http::Status::Created, "")
+        } else {
+            (http::Status::Conflict, "")
+        },
+    )
 }
 
 #[rocket::post("/login", format = "json", data = "<credentials>")]
 async fn verify_password(
     credentials: Json<UserCredentials<'_>>,
     user_service: &State<Arc<dyn UserService>>,
-) -> (http::Status, &'static str) {
-    if user_service
+) -> Result<String, Error> {
+    user_service
         .verify_password(credentials.username, credentials.password)
         .await
-    {
-        (http::Status::NoContent, "")
-    } else {
-        (http::Status::Unauthorized, "")
-    }
+        .map(|res| res.to_string())
 }
 
 // TODO: restrict valid usernames

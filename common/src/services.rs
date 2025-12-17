@@ -4,9 +4,9 @@ use crate::{Error, Quest, QuestItem};
 
 #[async_trait]
 pub trait UserService: Send + Sync {
-    async fn verify_password(&self, username: &str, password: &str) -> bool;
-    async fn add_user(&self, username: &str, password: &str) -> bool;
-    async fn user_exists(&self, username: &str) -> bool;
+    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error>;
+    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error>;
+    async fn user_exists(&self, username: &str) -> Result<bool, Error>;
 }
 
 #[async_trait]

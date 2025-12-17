@@ -47,26 +47,35 @@ impl InMemoryUserService {
 
 #[async_trait]
 impl UserService for InMemoryUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> bool {
-        if let Some(correct_hash) = self.users.read().await.get(username) {
-            let hash = self.hash_password(password);
-            return hash == *correct_hash;
-        }
-        return false;
+    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
+        Ok(
+            if let Some(correct_hash) = self.users.read().await.get(username) {
+                let hash = self.hash_password(password);
+                hash == *correct_hash
+            } else {
+                false
+            },
+        )
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> bool {
+    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
         if self.users.read().await.contains_key(username) {
-            return false;
+            return Ok(false);
+        }
+
+        let users = self.users.write().await;
+        if users.contains_key(username) {
+            return Ok(false);
         }
 
         let hash = self.hash_password(password);
-        self.users.write().await.insert(username.to_owned(), hash);
-        return true;
+        let previous_value = self.users.write().await.insert(username.to_owned(), hash);
+        assert!(previous_value.is_none());
+        return Ok(true);
     }
 
-    async fn user_exists(&self, username: &str) -> bool {
-        self.users.read().await.contains_key(username)
+    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
+        Ok(self.users.read().await.contains_key(username))
     }
 }
 
@@ -123,26 +132,26 @@ impl FileUserService {
 
 #[async_trait]
 impl UserService for FileUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> bool {
+    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
         self.in_memory_user_service
             .verify_password(username, password)
             .await
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> bool {
+    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
         let created = self
             .in_memory_user_service
             .add_user(username, password)
-            .await;
+            .await?;
         if created {
             if let Err(e) = self.save().await {
                 eprintln!("FileUserService: failed to write users to file: {}", e);
             }
         }
-        return created;
+        return Ok(created);
     }
 
-    async fn user_exists(&self, username: &str) -> bool {
+    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
         self.in_memory_user_service.user_exists(username).await
     }
 }
@@ -188,19 +197,18 @@ impl DatabaseUserService {
 
 #[async_trait]
 impl UserService for DatabaseUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> bool {
+    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
         let password_hash = self.hash_password(password);
-        sqlx::query_scalar(
+        Ok(sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM users WHERE (username = $1 AND password_hash = $2))",
         )
         .bind(&username)
         .bind(&password_hash)
         .fetch_one(&self.pool)
-        .await
-        .unwrap()
+        .await?)
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> bool {
+    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
         let password_hash = self.hash_password(password);
         match sqlx::query("INSERT INTO users (username, password_hash) VALUES ($1, $2)")
             .bind(&username)
@@ -208,20 +216,21 @@ impl UserService for DatabaseUserService {
             .execute(&self.pool)
             .await
         {
-            Ok(_) => true,
+            Ok(_) => Ok(true),
             Err(sqlx::Error::Database(db_error)) if db_error.constraint() == Some("users_pkey") => {
-                false
+                Ok(false)
             }
-            e => panic!("DatabaseError: {:?}", e),
+            Err(e) => Err(e.into()),
         }
     }
 
-    async fn user_exists(&self, username: &str) -> bool {
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
-            .bind(&username)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap()
+    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
+        Ok(
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
+                .bind(&username)
+                .fetch_one(&self.pool)
+                .await?,
+        )
     }
 }
 
@@ -247,65 +256,50 @@ pub struct UserCredentials<'a> {
 
 #[async_trait]
 impl UserService for BackendUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> bool {
+    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
         let credentials = UserCredentials { username, password };
-        let response = match self
+        let response = self
             .client
             .post(format!("{}/login", &self.address))
             .json(&credentials)
             .send()
-            .await
-        {
-            Ok(response) => response,
-            Err(e) => {
-                eprintln!("request to user-service backend failed: {}", e);
-                return false;
-            }
-        };
-        if response.status() == StatusCode::NO_CONTENT {
-            return true;
+            .await?;
+        match response.status() {
+            StatusCode::OK => response
+                .text()
+                .await?
+                .parse::<bool>()
+                .map_err(|_| Error::InvalidResponse),
+            _ => Err(Error::InvalidResponse),
         }
-        return false;
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> bool {
+    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
         let credentials = UserCredentials { username, password };
-        let response = match self
+        let response = self
             .client
             .post(&self.address)
             .json(&credentials)
             .send()
-            .await
-        {
-            Ok(response) => response,
-            Err(e) => {
-                eprintln!("request to user-service backend failed: {}", e);
-                return false;
-            }
-        };
-        if response.status() == StatusCode::CREATED {
-            return true;
+            .await?;
+        match response.status() {
+            StatusCode::CREATED => Ok(true),
+            StatusCode::CONFLICT => Ok(false),
+            _ => Err(Error::InvalidResponse),
         }
-        return false;
     }
 
-    async fn user_exists(&self, username: &str) -> bool {
-        let response = match self
+    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
+        let response = self
             .client
             .get(format!("{}/{}", &self.address, username))
             .json(&username)
             .send()
-            .await
-        {
-            Ok(response) => response,
-            Err(e) => {
-                eprintln!("request to user-service backend failed: {}", e);
-                return false;
-            }
-        };
-        if response.status() == StatusCode::NO_CONTENT {
-            return true;
+            .await?;
+        match response.status() {
+            StatusCode::OK => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            _ => Err(Error::InvalidResponse),
         }
-        return false;
     }
 }

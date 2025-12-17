@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use codequest_common::services::UserService;
+use codequest_common::{Error, services::UserService};
 use rocket::{
     FromForm, Request, State, async_trait,
     form::Form,
@@ -28,10 +28,15 @@ impl<'r> FromRequest<'r> for AuthUser {
                 Outcome::Success(user_service) => user_service,
                 _ => return Outcome::Error((http::Status::InternalServerError, ())),
             };
-            if user_service.user_exists(&username).await {
-                return Outcome::Success(AuthUser { username });
-            } else {
-                jar.remove_private("user_id");
+            match user_service.user_exists(&username).await {
+                Ok(res) => {
+                    if res {
+                        return Outcome::Success(AuthUser { username });
+                    } else {
+                        jar.remove_private("user_id");
+                    }
+                }
+                Err(_) => return Outcome::Error((http::Status::InternalServerError, ())),
             }
         }
 
@@ -83,10 +88,10 @@ pub async fn signup(
     form: Form<SignupForm<'_>>,
     jar: &CookieJar<'_>,
     user_service: &State<Arc<dyn UserService>>,
-) -> (http::Status, Json<SignupResponse>) {
+) -> Result<(http::Status, Json<SignupResponse>), Error> {
     let SignupForm { username, password } = *form;
 
-    if user_service.add_user(username, password).await {
+    Ok(if user_service.add_user(username, password).await? {
         jar.add_private(Cookie::new("user_id", username.to_owned()));
         (
             http::Status::Ok,
@@ -97,7 +102,7 @@ pub async fn signup(
             http::Status::Unauthorized,
             Json(SignupResponse::error("Username already taken".to_owned())),
         )
-    }
+    })
 }
 
 #[derive(FromForm)]
@@ -138,10 +143,10 @@ pub async fn login(
     form: Form<LoginForm<'_>>,
     jar: &CookieJar<'_>,
     user_service: &State<Arc<dyn UserService>>,
-) -> (http::Status, Json<LoginResponse>) {
+) -> Result<(http::Status, Json<LoginResponse>), Error> {
     let LoginForm { username, password } = *form;
 
-    if user_service.verify_password(username, password).await {
+    Ok(if user_service.verify_password(username, password).await? {
         jar.add_private(Cookie::new("user_id", username.to_owned()));
         (
             http::Status::Ok,
@@ -154,5 +159,5 @@ pub async fn login(
                 "Invalid username or password".to_owned(),
             )),
         )
-    }
+    })
 }

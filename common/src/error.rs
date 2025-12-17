@@ -5,9 +5,16 @@ pub enum Error {
     InvalidResponse,
     ServerUnreachable,
     IncoherentState,
+    Reqwest(reqwest::Error),
     Sqlx(sqlx::Error),
     Nats(async_nats::Error),
     Json(serde_json::Error),
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(error: reqwest::Error) -> Self {
+        Self::Reqwest(error)
+    }
 }
 
 impl From<sqlx::migrate::MigrateError> for Error {
