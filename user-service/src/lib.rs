@@ -220,6 +220,11 @@ impl UserService for DatabaseUserService {
             Err(sqlx::Error::Database(db_error)) if db_error.constraint() == Some("users_pkey") => {
                 Ok(false)
             }
+            Err(sqlx::Error::Database(db_error))
+                if db_error.constraint() == Some("CHK_username") =>
+            {
+                Err(Error::InvalidUsername(username.to_owned()))
+            }
             Err(e) => Err(e.into()),
         }
     }

@@ -5,10 +5,17 @@ pub enum Error {
     InvalidResponse,
     ServerUnreachable,
     IncoherentState,
+    InvalidUsername(String),
     Reqwest(reqwest::Error),
     Sqlx(sqlx::Error),
     Nats(async_nats::Error),
     Json(serde_json::Error),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(self, f)
+    }
 }
 
 impl From<reqwest::Error> for Error {
