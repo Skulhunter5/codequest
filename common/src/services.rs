@@ -1,12 +1,12 @@
 use rocket::async_trait;
 
-use crate::{Error, Quest, QuestItem};
+use crate::{Error, Quest, QuestItem, Username};
 
 #[async_trait]
 pub trait UserService: Send + Sync {
-    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error>;
-    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error>;
-    async fn user_exists(&self, username: &str) -> Result<bool, Error>;
+    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error>;
+    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error>;
+    async fn user_exists(&self, username: &Username) -> Result<bool, Error>;
 }
 
 #[async_trait]

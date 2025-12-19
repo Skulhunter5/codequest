@@ -1,7 +1,7 @@
 use std::{env, fs::DirBuilder, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, load_or_generate_salt, load_secret_key, services::UserService,
+    Credentials, Error, Username, load_or_generate_salt, load_secret_key, services::UserService,
 };
 use codequest_user_service::{DatabaseUserService, UserCredentials};
 use dotenv::dotenv;
@@ -19,7 +19,8 @@ async fn get_user(
     username: &str,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<(http::Status, &'static str), Error> {
-    Ok(if user_service.user_exists(username).await? {
+    let username = Username::build(username)?;
+    Ok(if user_service.user_exists(&username).await? {
         (http::Status::Ok, "")
     } else {
         (http::Status::NotFound, "")
@@ -31,9 +32,10 @@ async fn add_user(
     credentials: Json<UserCredentials<'_>>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<(http::Status, &'static str), Error> {
+    let username = Username::build(credentials.username)?;
     Ok(
         if user_service
-            .add_user(credentials.username, credentials.password)
+            .add_user(username, credentials.password)
             .await?
         {
             (http::Status::Created, "")
@@ -48,13 +50,13 @@ async fn verify_password(
     credentials: Json<UserCredentials<'_>>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<String, Error> {
+    let username = Username::build(credentials.username)?;
     user_service
-        .verify_password(credentials.username, credentials.password)
+        .verify_password(&username, credentials.password)
         .await
         .map(|res| res.to_string())
 }
 
-// TODO: restrict valid usernames
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     dotenv().ok();

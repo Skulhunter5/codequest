@@ -37,7 +37,7 @@ services:
     image: codequest-bootstrap
     container_name: codequest-bootstrap
     depends_on:
-      - codequest-nats
+      - nats
     networks:
       - codequest-net
     environment:

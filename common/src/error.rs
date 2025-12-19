@@ -1,10 +1,11 @@
-use rocket::{Response, response::Responder};
+use rocket::{Response, http, response::Responder};
 
 #[derive(Debug)]
 pub enum Error {
     InvalidResponse,
     ServerUnreachable,
     IncoherentState,
+    Unauthorized,
     InvalidUsername(String),
     Reqwest(reqwest::Error),
     Sqlx(sqlx::Error),
@@ -70,7 +71,11 @@ impl<'r> Responder<'r, 'static> for Error {
     fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
         eprintln!("internal error: {:?}", self);
         Response::build()
-            .status(rocket::http::Status::InternalServerError)
+            .status(match self {
+                Self::InvalidUsername(_) => http::Status::BadRequest,
+                Self::Unauthorized => http::Status::Unauthorized,
+                _ => http::Status::InternalServerError,
+            })
             .ok()
     }
 }

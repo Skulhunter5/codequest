@@ -6,7 +6,7 @@ use std::{
 };
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
-use codequest_common::{Credentials, Error, services::UserService};
+use codequest_common::{Credentials, Error, Username, services::UserService};
 use reqwest::{Client, StatusCode};
 use rocket::{
     async_trait,
@@ -16,9 +16,8 @@ use rocket::{
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
-// TODO: restrict valid usernames
 pub struct InMemoryUserService {
-    users: RwLock<HashMap<String, String>>,
+    users: RwLock<HashMap<Username, String>>,
     salt: SaltString,
 }
 
@@ -30,7 +29,7 @@ impl InMemoryUserService {
         }
     }
 
-    pub fn with(salt: SaltString, users: HashMap<String, String>) -> Self {
+    pub fn with(salt: SaltString, users: HashMap<Username, String>) -> Self {
         Self {
             users: RwLock::new(users),
             salt,
@@ -47,7 +46,7 @@ impl InMemoryUserService {
 
 #[async_trait]
 impl UserService for InMemoryUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
+    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
         Ok(
             if let Some(correct_hash) = self.users.read().await.get(username) {
                 let hash = self.hash_password(password);
@@ -58,23 +57,23 @@ impl UserService for InMemoryUserService {
         )
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
-        if self.users.read().await.contains_key(username) {
+    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
+        if self.users.read().await.contains_key(&username) {
             return Ok(false);
         }
 
         let users = self.users.write().await;
-        if users.contains_key(username) {
+        if users.contains_key(&username) {
             return Ok(false);
         }
 
         let hash = self.hash_password(password);
-        let previous_value = self.users.write().await.insert(username.to_owned(), hash);
+        let previous_value = self.users.write().await.insert(username.into(), hash);
         assert!(previous_value.is_none());
         return Ok(true);
     }
 
-    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
+    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         Ok(self.users.read().await.contains_key(username))
     }
 }
@@ -132,13 +131,13 @@ impl FileUserService {
 
 #[async_trait]
 impl UserService for FileUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
+    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
         self.in_memory_user_service
             .verify_password(username, password)
             .await
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
+    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
         let created = self
             .in_memory_user_service
             .add_user(username, password)
@@ -151,7 +150,7 @@ impl UserService for FileUserService {
         return Ok(created);
     }
 
-    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
+    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         self.in_memory_user_service.user_exists(username).await
     }
 }
@@ -197,21 +196,21 @@ impl DatabaseUserService {
 
 #[async_trait]
 impl UserService for DatabaseUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
+    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
         let password_hash = self.hash_password(password);
         Ok(sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM users WHERE (username = $1 AND password_hash = $2))",
         )
-        .bind(&username)
+        .bind(username.as_str())
         .bind(&password_hash)
         .fetch_one(&self.pool)
         .await?)
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
+    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
         let password_hash = self.hash_password(password);
         match sqlx::query("INSERT INTO users (username, password_hash) VALUES ($1, $2)")
-            .bind(&username)
+            .bind(username.as_str())
             .bind(&password_hash)
             .execute(&self.pool)
             .await
@@ -220,19 +219,14 @@ impl UserService for DatabaseUserService {
             Err(sqlx::Error::Database(db_error)) if db_error.constraint() == Some("users_pkey") => {
                 Ok(false)
             }
-            Err(sqlx::Error::Database(db_error))
-                if db_error.constraint() == Some("CHK_username") =>
-            {
-                Err(Error::InvalidUsername(username.to_owned()))
-            }
             Err(e) => Err(e.into()),
         }
     }
 
-    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
+    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         Ok(
             sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
-                .bind(&username)
+                .bind(username.as_str())
                 .fetch_one(&self.pool)
                 .await?,
         )
@@ -261,8 +255,11 @@ pub struct UserCredentials<'a> {
 
 #[async_trait]
 impl UserService for BackendUserService {
-    async fn verify_password(&self, username: &str, password: &str) -> Result<bool, Error> {
-        let credentials = UserCredentials { username, password };
+    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
+        let credentials = UserCredentials {
+            username: username.as_str(),
+            password,
+        };
         let response = self
             .client
             .post(format!("{}/login", &self.address))
@@ -279,8 +276,11 @@ impl UserService for BackendUserService {
         }
     }
 
-    async fn add_user(&self, username: &str, password: &str) -> Result<bool, Error> {
-        let credentials = UserCredentials { username, password };
+    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
+        let credentials = UserCredentials {
+            username: username.as_str(),
+            password,
+        };
         let response = self
             .client
             .post(&self.address)
@@ -294,11 +294,10 @@ impl UserService for BackendUserService {
         }
     }
 
-    async fn user_exists(&self, username: &str) -> Result<bool, Error> {
+    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         let response = self
             .client
-            .get(format!("{}/{}", &self.address, username))
-            .json(&username)
+            .get(format!("{}/{}", &self.address, username.as_ref()))
             .send()
             .await?;
         match response.status() {

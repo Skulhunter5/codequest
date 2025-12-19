@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use codequest_common::{Error, services::UserService};
+use codequest_common::{Error, Username, services::UserService};
 use rocket::{
     FromForm, Request, State, async_trait,
     form::Form,
@@ -13,21 +13,25 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct AuthUser {
-    pub(crate) username: String,
+    pub(crate) username: Username,
 }
 
 #[async_trait]
 impl<'r> FromRequest<'r> for AuthUser {
-    type Error = ();
+    type Error = Error;
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let jar = request.cookies();
 
         if let Some(cookie) = jar.get_private("user_id") {
-            let username = cookie.value().to_owned();
-            let user_service = match request.guard::<&State<Arc<dyn UserService>>>().await {
-                Outcome::Success(user_service) => user_service,
-                _ => return Outcome::Error((http::Status::InternalServerError, ())),
+            let username = match Username::build(cookie.value().to_owned()) {
+                Ok(username) => username,
+                Err(e) => return Outcome::Error((http::Status::BadRequest, e)),
             };
+
+            let user_service = request
+                .guard::<&State<Arc<dyn UserService>>>()
+                .await
+                .expect("UserService not registered with rocket");
             match user_service.user_exists(&username).await {
                 Ok(res) => {
                     if res {
@@ -36,11 +40,11 @@ impl<'r> FromRequest<'r> for AuthUser {
                         jar.remove_private("user_id");
                     }
                 }
-                Err(_) => return Outcome::Error((http::Status::InternalServerError, ())),
+                Err(e) => return Outcome::Error((http::Status::InternalServerError, e)),
             }
         }
 
-        Outcome::Error((http::Status::Unauthorized, ()))
+        Outcome::Error((http::Status::Unauthorized, Error::Unauthorized))
     }
 }
 
@@ -90,19 +94,22 @@ pub async fn signup(
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<(http::Status, Json<SignupResponse>), Error> {
     let SignupForm { username, password } = *form;
+    let username = Username::build(username)?;
 
-    Ok(if user_service.add_user(username, password).await? {
-        jar.add_private(Cookie::new("user_id", username.to_owned()));
-        (
-            http::Status::Ok,
-            Json(SignupResponse::success("/".to_owned())),
-        )
-    } else {
-        (
-            http::Status::Unauthorized,
-            Json(SignupResponse::error("Username already taken".to_owned())),
-        )
-    })
+    Ok(
+        if user_service.add_user(username.clone(), password).await? {
+            jar.add_private(Cookie::new("user_id", username.to_string()));
+            (
+                http::Status::Ok,
+                Json(SignupResponse::success("/".to_owned())),
+            )
+        } else {
+            (
+                http::Status::Unauthorized,
+                Json(SignupResponse::error("Username already taken".to_owned())),
+            )
+        },
+    )
 }
 
 #[derive(FromForm)]
@@ -145,19 +152,22 @@ pub async fn login(
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<(http::Status, Json<LoginResponse>), Error> {
     let LoginForm { username, password } = *form;
+    let username = Username::build(username)?;
 
-    Ok(if user_service.verify_password(username, password).await? {
-        jar.add_private(Cookie::new("user_id", username.to_owned()));
-        (
-            http::Status::Ok,
-            Json(LoginResponse::success("/".to_owned())),
-        )
-    } else {
-        (
-            http::Status::Unauthorized,
-            Json(LoginResponse::error(
-                "Invalid username or password".to_owned(),
-            )),
-        )
-    })
+    Ok(
+        if user_service.verify_password(&username, password).await? {
+            jar.add_private(Cookie::new("user_id", username.to_string()));
+            (
+                http::Status::Ok,
+                Json(LoginResponse::success("/".to_owned())),
+            )
+        } else {
+            (
+                http::Status::Unauthorized,
+                Json(LoginResponse::error(
+                    "Invalid username or password".to_owned(),
+                )),
+            )
+        },
+    )
 }

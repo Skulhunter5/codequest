@@ -128,11 +128,11 @@ pub async fn quest(
             Ok(
                 if let Some(present_user) = &user
                     && progression_service
-                        .has_user_completed_quest(&present_user.username, &quest_id)
+                        .has_user_completed_quest(present_user.username.as_str(), &quest_id)
                         .await?
                 {
                     let quest_answer = quest_service
-                        .get_answer(&quest_id, &present_user.username)
+                        .get_answer(&quest_id, present_user.username.as_str())
                         .await?
                         .ok_or(Error::IncoherentState)?;
                     Template::render(
@@ -178,7 +178,7 @@ pub async fn quest_input(
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<String, http::Status> {
     if let Some(user) = user {
-        match quest_service.get_input(&id, &user.username).await {
+        match quest_service.get_input(&id, user.username.as_str()).await {
             Ok(Some(input)) => Ok(input),
             Ok(None) => Err(http::Status::NotFound),
             Err(_) => Err(http::Status::InternalServerError),
@@ -207,7 +207,7 @@ pub async fn quest_answer(
     };
     Ok(if let Some(user) = user {
         match progression_service
-            .submit_answer(&user.username, &quest_id, &form.answer)
+            .submit_answer(user.username.as_str(), &quest_id, &form.answer)
             .await?
         {
             Some(answer_was_correct) => Ok(Template::render(

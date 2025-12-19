@@ -1,14 +1,16 @@
 use argon2::password_hash::{SaltString, rand_core::OsRng};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use std::{fs, io, path::Path};
 
 mod credentials;
 mod error;
 pub mod services;
+mod username;
 
 pub use credentials::Credentials;
 pub use error::Error;
+pub use username::Username;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
 pub struct Quest {
@@ -55,32 +57,4 @@ pub fn load_or_generate_salt<P: AsRef<Path>>(path: P) -> SaltString {
 
 pub fn load_secret_key<P: AsRef<Path>>(path: P) -> io::Result<String> {
     fs::read_to_string(path)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Username(String);
-
-impl Username {
-    pub fn build(value: String) -> Result<Self, Error> {
-        if value.len() == 0 || value.chars().find(|c| !c.is_ascii_alphanumeric()).is_some() {
-            return Err(Error::InvalidUsername(value));
-        }
-        Ok(Self(value))
-    }
-}
-
-impl<'de> Deserialize<'de> for Username {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Username::build(value).map_err(serde::de::Error::custom)
-    }
-}
-
-impl std::fmt::Display for Username {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
 }
