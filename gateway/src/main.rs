@@ -69,6 +69,7 @@ async fn main() -> Result<(), rocket::Error> {
                 pages::quest,
                 pages::quest_input,
                 pages::quest_answer,
+                pages::account,
                 auth::login,
                 auth::signup,
                 auth::logout,

@@ -226,3 +226,11 @@ pub async fn quest_answer(
         Err(http::Status::Unauthorized)
     })
 }
+
+#[rocket::get("/account")]
+pub async fn account(user: AuthUser) -> Result<Template, Error> {
+    Ok(Template::render(
+        "account",
+        PageContext::new(&Some(user), context! {}),
+    ))
+}

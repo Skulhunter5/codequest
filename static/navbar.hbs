@@ -7,7 +7,7 @@
 
     <div class="nav-right">
         {{#if user}}
-            <span class="username">{{user}}</span>
+            <a href="/account" class="username">{{user}}</a>
             <a class="btn" href="/logout">Logout</a>
         {{else}}
             <a href="/login" class="btn">Log In</a>
