@@ -7,7 +7,7 @@
         <div id="error-box" class="error" style="display:none;"></div>
 
         <label>Username</label>
-        <input type="text" name="username" autoFocus equired>
+        <input id="username-field" type="text" name="username" autoFocus required>
 
         <label>Password</label>
         <input type="password" name="password" required>
@@ -16,8 +16,19 @@
     </form>
 
     <script>
+    const usernameField = document.getElementById('username-field');
+
     document.getElementById("login-form").addEventListener("submit", async (e) => {
-        e.preventDefault(); // stop normal form submission
+        e.preventDefault();
+
+        const username_regex = /^[a-zA-Z0-9]{1,30}$/;
+
+        if (!username_regex.test(usernameField.value)) {
+            const errorBox = document.getElementById("error-box");
+            errorBox.textContent = "Username can only contain letters and digits.";
+            errorBox.style.display = "block";
+            return;
+        }
 
         const form = e.target;
         const formData = new FormData(form);
