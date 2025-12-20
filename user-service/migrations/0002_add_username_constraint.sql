@@ -1,2 +1,2 @@
 ALTER TABLE users
-ADD CONSTRAINT CHK_username CHECK (username SIMILAR TO '[a-zA-Z0-9]+');
+ADD CONSTRAINT CHK_username CHECK (username SIMILAR TO '[a-zA-Z0-9]{1,30}');

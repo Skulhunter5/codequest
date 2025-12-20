@@ -6,9 +6,19 @@ use crate::Error;
 pub struct Username(String);
 
 impl Username {
+    fn is_valid(value: impl AsRef<str>) -> bool {
+        let value = value.as_ref();
+        (1..=30).contains(&value.len())
+            && value.chars().find(|c| !Self::is_valid_char(*c)).is_none()
+    }
+
+    fn is_valid_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_' || c == '-'
+    }
+
     pub fn build(value: impl Into<String>) -> Result<Self, Error> {
         let value = value.into();
-        if value.len() == 0 || value.chars().find(|c| !c.is_ascii_alphanumeric()).is_some() {
+        if !Self::is_valid(&value) {
             return Err(Error::InvalidUsername(value));
         }
         Ok(Self(value))
@@ -50,7 +60,7 @@ pub struct UsernameRef<'a>(&'a str);
 
 impl<'a> UsernameRef<'a> {
     pub fn build(value: &'a str) -> Result<Self, Error> {
-        if value.len() == 0 || value.chars().find(|c| !c.is_ascii_alphanumeric()).is_some() {
+        if !Username::is_valid(&value) {
             return Err(Error::InvalidUsername(value.to_owned()));
         }
         Ok(Self(value))
