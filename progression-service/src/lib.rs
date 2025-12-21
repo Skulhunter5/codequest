@@ -7,7 +7,7 @@ use std::{
 };
 
 use codequest_common::{
-    Credentials, Error,
+    Credentials, Error, QuestId,
     services::{ProgressionService, QuestService},
 };
 use reqwest::{Client, StatusCode};
@@ -19,7 +19,7 @@ use rocket::{
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub struct InMemoryProgressionService {
-    user_progress: RwLock<HashMap<String, Vec<String>>>,
+    user_progress: RwLock<HashMap<String, Vec<QuestId>>>,
     quest_service: Arc<dyn QuestService>,
 }
 
@@ -33,7 +33,7 @@ impl InMemoryProgressionService {
     }
 
     pub fn with(
-        user_progress: HashMap<String, Vec<String>>,
+        user_progress: HashMap<String, Vec<QuestId>>,
         quest_service: Arc<dyn QuestService>,
     ) -> Self {
         Self {
@@ -48,7 +48,7 @@ impl ProgressionService for InMemoryProgressionService {
     async fn has_user_completed_quest(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
     ) -> Result<bool, Error> {
         let users = self.user_progress.read().await;
         Ok(if let Some(completed_quests) = users.get(username) {
@@ -64,7 +64,7 @@ impl ProgressionService for InMemoryProgressionService {
     async fn submit_answer(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         if self.has_user_completed_quest(username, quest_id).await? {
@@ -77,7 +77,7 @@ impl ProgressionService for InMemoryProgressionService {
         if Some(true) == res {
             let mut user_progress = self.user_progress.write().await;
             if let Some(completed_quests) = user_progress.get_mut(username) {
-                completed_quests.push(quest_id.to_owned());
+                completed_quests.push(quest_id.clone());
             } else {
                 user_progress.insert(username.to_owned(), vec![quest_id.to_owned()]);
             }
@@ -146,7 +146,7 @@ impl ProgressionService for FileProgressionService {
     async fn has_user_completed_quest(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
     ) -> Result<bool, Error> {
         self.in_memory_progression_service
             .has_user_completed_quest(username, quest_id)
@@ -156,7 +156,7 @@ impl ProgressionService for FileProgressionService {
     async fn submit_answer(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         let res = self
@@ -215,7 +215,7 @@ impl ProgressionService for DatabaseProgressionService {
     async fn has_user_completed_quest(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
     ) -> Result<bool, Error> {
         Ok(sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM progression WHERE (quest_id = $1 AND username = $2))",
@@ -230,7 +230,7 @@ impl ProgressionService for DatabaseProgressionService {
     async fn submit_answer(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         if self.has_user_completed_quest(username, quest_id).await? {
@@ -280,7 +280,7 @@ impl ProgressionService for BackendProgressionService {
     async fn has_user_completed_quest(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
     ) -> Result<bool, Error> {
         let response = self
             .client
@@ -303,7 +303,7 @@ impl ProgressionService for BackendProgressionService {
     async fn submit_answer(
         &self,
         username: &str,
-        quest_id: &str,
+        quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         let response = self

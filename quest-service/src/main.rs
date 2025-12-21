@@ -1,7 +1,7 @@
 use std::{env, fs::DirBuilder, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Quest, QuestItem, load_secret_key, services::QuestService,
+    Credentials, Error, Quest, QuestId, QuestItem, load_secret_key, services::QuestService,
 };
 use codequest_quest_service::DatabaseQuestService;
 use dotenv::dotenv;
@@ -30,11 +30,11 @@ async fn list_quests(
 
 #[rocket::get("/<id>")]
 async fn get_quest(
-    id: &str,
+    id: QuestId,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<Json<Quest>, status::NotFound<RawJson<&'static str>>>, Error> {
     Ok(quest_service
-        .get_quest(id)
+        .get_quest(&id)
         .await?
         .map(|quest| Json(quest))
         .ok_or(status::NotFound(RawJson(""))))
@@ -42,37 +42,37 @@ async fn get_quest(
 
 #[rocket::get("/<quest_id>/input/<username>")]
 async fn get_input(
-    quest_id: &str,
+    quest_id: QuestId,
     username: &str,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(quest_service
-        .get_input(quest_id, username)
+        .get_input(&quest_id, username)
         .await?
         .ok_or(status::NotFound(RawText(""))))
 }
 
 #[rocket::get("/<quest_id>/answer/<username>")]
 async fn get_answer(
-    quest_id: &str,
+    quest_id: QuestId,
     username: &str,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(quest_service
-        .get_answer(quest_id, username)
+        .get_answer(&quest_id, username)
         .await?
         .ok_or(status::NotFound(RawText(""))))
 }
 
 #[rocket::post("/<quest_id>/answer/<username>", data = "<answer>")]
 async fn verify_answer(
-    quest_id: &str,
+    quest_id: QuestId,
     username: &str,
     answer: &str,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(quest_service
-        .verify_answer(quest_id, username, answer)
+        .verify_answer(&quest_id, username, answer)
         .await?
         .map(|answer_was_correct| answer_was_correct.to_string())
         .ok_or(status::NotFound(RawText(""))))
