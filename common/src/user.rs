@@ -1,6 +1,34 @@
 use serde::{Deserialize, Deserializer, Serialize};
+use uuid::Uuid;
 
 use crate::Error;
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow, sqlx::Type,
+)]
+#[sqlx(transparent)]
+#[repr(transparent)]
+pub struct UserId(Uuid);
+
+impl UserId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl std::fmt::Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<'r> rocket::request::FromParam<'r> for UserId {
+    type Error = &'r str;
+
+    fn from_param(param: &'r str) -> Result<Self, Self::Error> {
+        Uuid::parse_str(param).map(UserId).map_err(|_| param)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct Username(String);
@@ -94,5 +122,17 @@ impl<'de> Deserialize<'de> for UsernameRef<'de> {
 impl std::fmt::Display for UsernameRef<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow)]
+pub struct User {
+    id: UserId,
+    username: Username,
+}
+
+impl User {
+    pub fn new(id: UserId, username: Username) -> Self {
+        Self { id, username }
     }
 }

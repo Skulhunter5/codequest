@@ -1,49 +1,16 @@
 use argon2::password_hash::{SaltString, rand_core::OsRng};
-use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
 use std::{fs, io, path::Path};
 
 mod credentials;
 mod error;
+mod quest;
 pub mod services;
-mod username;
+mod user;
 
 pub use credentials::Credentials;
 pub use error::Error;
-pub use username::Username;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
-pub struct Quest {
-    #[serde(flatten)]
-    #[sqlx(flatten)]
-    pub item: QuestItem,
-    #[sqlx(rename = "description")]
-    pub text: String,
-}
-
-impl Quest {
-    pub fn new<S: AsRef<str>>(name: S, id: S, text: S) -> Self {
-        Self {
-            item: QuestItem::new(name, id),
-            text: text.as_ref().to_owned(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
-pub struct QuestItem {
-    pub id: String,
-    pub name: String,
-}
-
-impl QuestItem {
-    pub fn new<S: AsRef<str>>(id: S, name: S) -> Self {
-        Self {
-            id: id.as_ref().to_owned(),
-            name: name.as_ref().to_owned(),
-        }
-    }
-}
+pub use quest::{Quest, QuestId, QuestItem};
+pub use user::{User, UserId, Username};
 
 pub fn load_or_generate_salt<P: AsRef<Path>>(path: P) -> SaltString {
     if let Ok(salt) = fs::read_to_string(&path) {

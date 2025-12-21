@@ -1,7 +1,7 @@
 use std::{env, fs::DirBuilder, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, load_secret_key,
+    Credentials, Error, QuestId, load_secret_key,
     services::{ProgressionService, QuestService},
 };
 use codequest_progression_service::DatabaseProgressionService;
@@ -22,24 +22,24 @@ mod defaults {
 #[rocket::get("/<username>/<quest_id>")]
 async fn has_user_completed_quest(
     username: &str,
-    quest_id: &str,
+    quest_id: QuestId,
     progression_service: &State<Arc<dyn ProgressionService>>,
 ) -> Result<String, Error> {
     progression_service
-        .has_user_completed_quest(username, quest_id)
+        .has_user_completed_quest(username, &quest_id)
         .await
         .map(|res| res.to_string())
 }
 
 #[rocket::post("/<username>/<quest_id>/answer", data = "<answer>")]
 async fn submit_answer(
-    quest_id: &str,
+    quest_id: QuestId,
     username: &str,
     answer: &str,
     progression_service: &State<Arc<dyn ProgressionService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(progression_service
-        .submit_answer(username, quest_id, answer)
+        .submit_answer(username, &quest_id, answer)
         .await?
         .ok_or_else(|| status::NotFound(RawText("")))
         .map(|answer_was_correct| answer_was_correct.to_string()))

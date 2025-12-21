@@ -1,6 +1,6 @@
 use std::{io, path::Path};
 
-use codequest_common::{Credentials, Error, Quest, QuestItem, services::QuestService};
+use codequest_common::{Credentials, Error, Quest, QuestId, QuestItem, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -13,22 +13,22 @@ impl ConstQuestService {
     pub fn new() -> Self {
         let quests = vec![
             Quest::new(
-                "quest-1",
+                QuestId::new(),
                 "Quest 1",
                 "For this quest, you have to submit '1'",
             ),
             Quest::new(
-                "quest-2",
+                QuestId::new(),
                 "Quest 2",
                 "For this quest, you have to submit '2'",
             ),
             Quest::new(
-                "quest-3",
+                QuestId::new(),
                 "Quest 3",
                 "For this quest, you have to submit '3'",
             ),
             Quest::new(
-                "quest-4",
+                QuestId::new(),
                 "Quest 4",
                 "For this quest, you have to submit '4'",
             ),
@@ -49,32 +49,36 @@ impl QuestService for ConstQuestService {
             .into_boxed_slice())
     }
 
-    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
+    async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
         Ok(self
             .quests
             .iter()
-            .find(|quest| quest.item.id == quest_id)
+            .find(|quest| quest.item.id == *id)
             .cloned())
     }
 
-    async fn quest_exists(&self, quest_id: &str) -> Result<bool, Error> {
+    async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
         Ok(self
             .quests
             .iter()
-            .find(|quest| quest.item.id == quest_id)
+            .find(|quest| quest.item.id == *id)
             .is_some())
     }
 
-    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
         Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
             &quest_id, &username
         )))
     }
 
-    async fn get_answer(&self, quest_id: &str, _username: &str) -> Result<Option<String>, Error> {
+    async fn get_answer(
+        &self,
+        quest_id: &QuestId,
+        _username: &str,
+    ) -> Result<Option<String>, Error> {
         Ok(if self.quest_exists(&quest_id).await? {
-            Some(quest_id.to_owned())
+            Some(quest_id.to_string())
         } else {
             None
         })
@@ -105,24 +109,28 @@ impl QuestService for FileQuestService {
             .into_boxed_slice())
     }
 
-    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
+    async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
         Ok(self
             .quests
             .iter()
-            .find(|quest| quest.item.id == quest_id)
+            .find(|quest| quest.item.id == *id)
             .cloned())
     }
 
-    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
         Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
             &quest_id, &username
         )))
     }
 
-    async fn get_answer(&self, quest_id: &str, _username: &str) -> Result<Option<String>, Error> {
+    async fn get_answer(
+        &self,
+        quest_id: &QuestId,
+        _username: &str,
+    ) -> Result<Option<String>, Error> {
         Ok(if self.quest_exists(&quest_id).await? {
-            Some(quest_id.to_owned())
+            Some(quest_id.to_string())
         } else {
             None
         })
@@ -170,35 +178,39 @@ impl QuestService for DatabaseQuestService {
         )
     }
 
-    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
+    async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
         Ok(
             sqlx::query_as::<_, Quest>("SELECT id, name, description FROM quests WHERE id = $1")
-                .bind(&quest_id)
+                .bind(&id)
                 .fetch_optional(&self.pool)
                 .await?,
         )
     }
 
-    async fn quest_exists(&self, quest_id: &str) -> Result<bool, Error> {
+    async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
         Ok(
             sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM quests WHERE id = $1)")
-                .bind(&quest_id)
+                .bind(&id)
                 .fetch_one(&self.pool)
                 .await
                 .unwrap(),
         )
     }
 
-    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
         Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
             &quest_id, &username
         )))
     }
 
-    async fn get_answer(&self, quest_id: &str, _username: &str) -> Result<Option<String>, Error> {
+    async fn get_answer(
+        &self,
+        quest_id: &QuestId,
+        _username: &str,
+    ) -> Result<Option<String>, Error> {
         Ok(if self.quest_exists(&quest_id).await? {
-            Some(quest_id.to_owned())
+            Some(quest_id.to_string())
         } else {
             None
         })
@@ -237,10 +249,10 @@ impl QuestService for BackendQuestService {
         }
     }
 
-    async fn get_quest(&self, quest_id: &str) -> Result<Option<Quest>, Error> {
+    async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
         let response = self
             .client
-            .get(format!("{}/{}", &self.address, quest_id))
+            .get(format!("{}/{}", &self.address, id))
             .send()
             .await
             .map_err(|_| Error::ServerUnreachable)?;
@@ -254,7 +266,7 @@ impl QuestService for BackendQuestService {
         }
     }
 
-    async fn get_input(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
         let response = self
             .client
             .get(format!("{}/{}/input/{}", &self.address, quest_id, username))
@@ -272,7 +284,11 @@ impl QuestService for BackendQuestService {
         }
     }
 
-    async fn get_answer(&self, quest_id: &str, username: &str) -> Result<Option<String>, Error> {
+    async fn get_answer(
+        &self,
+        quest_id: &QuestId,
+        username: &str,
+    ) -> Result<Option<String>, Error> {
         let response = self
             .client
             .get(format!(
@@ -295,7 +311,7 @@ impl QuestService for BackendQuestService {
 
     async fn verify_answer(
         &self,
-        quest_id: &str,
+        quest_id: &QuestId,
         username: &str,
         answer: &str,
     ) -> Result<Option<bool>, Error> {

@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use codequest_common::{
-    Error, QuestItem,
+    Error, QuestId, QuestItem,
     services::{ProgressionService, QuestService},
 };
 use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirect};
@@ -118,7 +118,7 @@ impl<'a> From<&'a QuestItem> for QuestContext<'a> {
 
 #[rocket::get("/quest/<quest_id>")]
 pub async fn quest(
-    quest_id: &str,
+    quest_id: QuestId,
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
     progression_service: &State<Arc<dyn ProgressionService>>,
@@ -171,14 +171,17 @@ pub async fn quest(
     )
 }
 
-#[rocket::get("/quest/<id>/input")]
+#[rocket::get("/quest/<quest_id>/input")]
 pub async fn quest_input(
-    id: &str,
+    quest_id: QuestId,
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<String, http::Status> {
     if let Some(user) = user {
-        match quest_service.get_input(&id, user.username.as_str()).await {
+        match quest_service
+            .get_input(&quest_id, user.username.as_str())
+            .await
+        {
             Ok(Some(input)) => Ok(input),
             Ok(None) => Err(http::Status::NotFound),
             Err(_) => Err(http::Status::InternalServerError),
@@ -196,7 +199,7 @@ pub(crate) struct AnswerForm<'a> {
 #[rocket::post("/quest/<quest_id>/answer", data = "<form>")]
 pub async fn quest_answer(
     form: Form<AnswerForm<'_>>,
-    quest_id: &str,
+    quest_id: QuestId,
     user: Option<AuthUser>,
     quest_service: &State<Arc<dyn QuestService>>,
     progression_service: &State<Arc<dyn ProgressionService>>,
