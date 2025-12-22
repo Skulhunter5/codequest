@@ -26,7 +26,7 @@ RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     && cp /workspace/target/release/$BINARY /workspace/$BINARY
 
 # BINARY
-FROM gcr.io/distroless/cc
+FROM gcr.io/distroless/cc-debian13
 WORKDIR /app
 COPY --from=builder /workspace/Rocket.toml /app/
 COPY --from=builder /workspace/codequest-quest-service /usr/local/bin/codequest-quest-service

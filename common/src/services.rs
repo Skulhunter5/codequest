@@ -13,12 +13,15 @@ pub trait UserService: Send + Sync {
 pub trait QuestService: Send + Sync {
     async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error>;
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error>;
+
     async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
         Ok(self.get_quest(&id).await?.is_some())
     }
+
     async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error>;
     async fn get_answer(&self, quest_id: &QuestId, username: &str)
     -> Result<Option<String>, Error>;
+
     async fn verify_answer(
         &self,
         quest_id: &QuestId,

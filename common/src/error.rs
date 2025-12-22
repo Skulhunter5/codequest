@@ -1,4 +1,8 @@
+use std::process::ExitStatus;
+
 use rocket::{Response, http, response::Responder};
+
+use crate::QuestId;
 
 #[derive(Debug)]
 pub enum Error {
@@ -6,16 +10,28 @@ pub enum Error {
     ServerUnreachable,
     IncoherentState,
     Unauthorized,
+    IO(std::io::Error),
     InvalidUsername(String),
     Reqwest(reqwest::Error),
     Sqlx(sqlx::Error),
     Nats(async_nats::Error),
     Json(serde_json::Error),
+    QuestContextGeneratorFailed {
+        quest: QuestId,
+        username: String,
+        exit_status: ExitStatus,
+    },
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(self, f)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        Self::IO(error)
     }
 }
 
