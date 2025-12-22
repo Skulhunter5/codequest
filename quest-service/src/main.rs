@@ -90,17 +90,6 @@ fn catch_all() -> &'static str {
 async fn main() -> Result<(), rocket::Error> {
     dotenv().ok();
 
-    {
-        println!("PWD: {:?}", std::env::current_dir());
-        let quest_id = "019b431e-5fc6-7253-b68e-293d17c03155";
-        let generator_path = std::path::Path::new("./quests/generators").join(quest_id);
-        println!("generator_path: {:?}", &generator_path);
-        println!(
-            "generator_path exists: {:?}",
-            std::fs::exists(&generator_path)
-        );
-    }
-
     let db_credentials = {
         let username =
             env::var("DB_USERNAME_QUEST_SERVICE").expect("DB_USERNAME_QUEST_SERVICE not set");
