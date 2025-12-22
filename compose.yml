@@ -93,6 +93,8 @@ services:
       - DB_USERNAME_QUEST_SERVICE=${DB_USERNAME_QUEST_SERVICE}
       - DB_PASSWORD_QUEST_SERVICE=${DB_PASSWORD_QUEST_SERVICE}
       - SECRET_KEY_FILE=/run/secrets/secret_key
+    volumes:
+      - ./run/quests:/app/quests
   progression-service:
     image: codequest-progression-service
     container_name: codequest-progression-service

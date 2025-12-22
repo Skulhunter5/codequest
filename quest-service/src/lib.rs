@@ -1,9 +1,13 @@
-use std::{io, path::Path};
+use std::{io, path::Path, sync::Arc};
 
 use codequest_common::{Credentials, Error, Quest, QuestId, QuestItem, services::QuestService};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+
+use crate::quest_context::QuestContextProvider;
+
+pub mod quest_context;
 
 pub struct ConstQuestService {
     quests: Box<[Quest]>,
@@ -139,6 +143,7 @@ impl QuestService for FileQuestService {
 
 pub struct DatabaseQuestService {
     pool: PgPool,
+    context_provider: Arc<dyn QuestContextProvider>,
 }
 
 impl DatabaseQuestService {
@@ -146,6 +151,7 @@ impl DatabaseQuestService {
         address: S,
         db_name: S,
         credentials: Credentials,
+        context_provider: Arc<dyn QuestContextProvider>,
     ) -> Result<Self, Error> {
         let pool = PgPoolOptions::new()
             .max_connections(20)
@@ -163,7 +169,10 @@ impl DatabaseQuestService {
 
         sqlx::migrate!().run(&pool).await?;
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            context_provider,
+        })
     }
 }
 
@@ -198,22 +207,15 @@ impl QuestService for DatabaseQuestService {
     }
 
     async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
-        Ok(Some(format!(
-            "[WIP] Input for quest '{}' for user '{}'",
-            &quest_id, &username
-        )))
+        self.context_provider.get_input(quest_id, username).await
     }
 
     async fn get_answer(
         &self,
         quest_id: &QuestId,
-        _username: &str,
+        username: &str,
     ) -> Result<Option<String>, Error> {
-        Ok(if self.quest_exists(&quest_id).await? {
-            Some(quest_id.to_string())
-        } else {
-            None
-        })
+        self.context_provider.get_answer(quest_id, username).await
     }
 }
 

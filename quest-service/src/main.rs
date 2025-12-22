@@ -3,7 +3,10 @@ use std::{env, fs::DirBuilder, sync::Arc};
 use codequest_common::{
     Credentials, Error, Quest, QuestId, QuestItem, load_secret_key, services::QuestService,
 };
-use codequest_quest_service::DatabaseQuestService;
+use codequest_quest_service::{
+    DatabaseQuestService,
+    quest_context::{InMemoryQuestContextCache, QuestContextGenerator},
+};
 use dotenv::dotenv;
 use rocket::{
     State, catchers,
@@ -87,6 +90,17 @@ fn catch_all() -> &'static str {
 async fn main() -> Result<(), rocket::Error> {
     dotenv().ok();
 
+    {
+        println!("PWD: {:?}", std::env::current_dir());
+        let quest_id = "019b431e-5fc6-7253-b68e-293d17c03155";
+        let generator_path = std::path::Path::new("./quests/generators").join(quest_id);
+        println!("generator_path: {:?}", &generator_path);
+        println!(
+            "generator_path exists: {:?}",
+            std::fs::exists(&generator_path)
+        );
+    }
+
     let db_credentials = {
         let username =
             env::var("DB_USERNAME_QUEST_SERVICE").expect("DB_USERNAME_QUEST_SERVICE not set");
@@ -118,9 +132,16 @@ async fn main() -> Result<(), rocket::Error> {
         .merge(("secret_key", secret_key))
         .merge(("port", port));
 
-    let quest_service = DatabaseQuestService::new(&db_address, &db_name, db_credentials)
-        .await
-        .expect("failed to start DatabaseQuestService");
+    let quest_context_provider =
+        InMemoryQuestContextCache::new(Arc::new(QuestContextGenerator::new("./quests/generators")));
+    let quest_service = DatabaseQuestService::new(
+        &db_address,
+        &db_name,
+        db_credentials,
+        Arc::new(quest_context_provider),
+    )
+    .await
+    .expect("failed to start DatabaseQuestService");
 
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])

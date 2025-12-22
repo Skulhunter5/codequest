@@ -10,3 +10,4 @@ serde = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 sqlx = { workspace = true }
 dotenv = { workspace = true }
+tokio = { version = "1", features = ["process"] }
