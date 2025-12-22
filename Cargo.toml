@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["common", "gateway", "quest-service", "user-service", "progression-service", "bootstrap"]
+exclude = ["example-quests"]
 
 [workspace.dependencies]
 rocket = "0.5"

@@ -27,3 +27,12 @@ debug_quests:
 	gcc debug-quests/quest-6.c -o $(GENERATORS_DIR)/f1232b43-07af-4c5f-baa0-21da5a43fc83
 	gcc debug-quests/quest-7.c -o $(GENERATORS_DIR)/82bdf583-2c0f-4d67-be79-2866c4a986e3
 	gcc debug-quests/quest-8.c -o $(GENERATORS_DIR)/75ad32aa-76c6-4d74-a545-e9b95b48e21a
+
+example_quests:
+	cd example-quests && cargo build --release --bin quest-1 --bin quest-2 --bin quest-3 --bin quest-4 --bin quest-5
+	mkdir -p $(GENERATORS_DIR)
+	mv example-quests/target/release/quest-1 $(GENERATORS_DIR)/e4f16655-0dd2-4e40-b3f5-375305d848ff
+	mv example-quests/target/release/quest-2 $(GENERATORS_DIR)/d2af9af8-471a-4b7e-98d8-164475908514
+	mv example-quests/target/release/quest-3 $(GENERATORS_DIR)/81020ed8-9474-4eba-8256-86af495c269f
+	mv example-quests/target/release/quest-4 $(GENERATORS_DIR)/ad31793a-1ba3-43fc-b738-225311b7eca6
+	mv example-quests/target/release/quest-5 $(GENERATORS_DIR)/d45016cb-fc53-45fd-ae7f-8c44acabf3d8
