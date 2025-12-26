@@ -19,7 +19,7 @@ Build-Dependencies:
 Now all codequest-containers should be available in the local docker images. \
 (You can check with `docker image ls`)
 ## Setup-Instructions
-1. Create `.env` with the following template and fill in real passwords \
+1. Create `.env` with the following template and fill in real passwords
     ```.env
     POSTGRES_USER=pguser
     POSTGRES_PASSWORD=pgpass
