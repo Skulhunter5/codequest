@@ -73,6 +73,7 @@ async fn main() -> Result<(), rocket::Error> {
                 auth::login,
                 auth::signup,
                 auth::logout,
+                auth::change_password,
             ],
         )
         .attach(Template::fairing())

@@ -160,6 +160,16 @@ h1 {
     margin-bottom: 1rem;
 }
 
+.success {
+    background: #1f3c1f;
+    border: 1px solid #3b3;
+    padding: 0.7rem;
+    border-radius: 6px;
+    color: #9aff9a;
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
 main a {
     color: #a084ff;
     text-decoration: none;

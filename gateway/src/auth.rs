@@ -136,11 +136,11 @@ impl LoginResponse {
         }
     }
 
-    fn error(error: String) -> Self {
+    fn error(error: impl Into<String>) -> Self {
         Self {
             success: false,
             redirect: None,
-            error: Some(error),
+            error: Some(error.into()),
         }
     }
 }
@@ -167,6 +167,58 @@ pub async fn login(
                 Json(LoginResponse::error(
                     "Invalid username or password".to_owned(),
                 )),
+            )
+        },
+    )
+}
+
+#[derive(FromForm)]
+pub struct ChangePasswordForm<'a> {
+    #[field(name = "currentPassword")]
+    current_password: &'a str,
+    #[field(name = "newPassword")]
+    new_password: &'a str,
+}
+
+#[derive(Serialize)]
+pub struct ChangePasswordResponse {
+    success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl ChangePasswordResponse {
+    pub fn success() -> Self {
+        Self {
+            success: true,
+            error: None,
+        }
+    }
+
+    pub fn error(error: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            error: Some(error.into()),
+        }
+    }
+}
+
+#[rocket::post("/change-password", data = "<form>")]
+pub async fn change_password(
+    form: Form<ChangePasswordForm<'_>>,
+    user: AuthUser,
+    user_service: &State<Arc<dyn UserService>>,
+) -> Result<(http::Status, Json<ChangePasswordResponse>), Error> {
+    Ok(
+        if user_service
+            .change_password(&user.username, form.current_password, form.new_password)
+            .await?
+        {
+            (http::Status::Ok, Json(ChangePasswordResponse::success()))
+        } else {
+            (
+                http::Status::Unauthorized,
+                Json(ChangePasswordResponse::error("Wrong password")),
             )
         },
     )

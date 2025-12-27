@@ -6,6 +6,12 @@ use crate::{Error, Quest, QuestId, QuestItem, Username};
 pub trait UserService: Send + Sync {
     async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error>;
     async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error>;
+    async fn change_password(
+        &self,
+        username: &Username,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<bool, Error>;
     async fn user_exists(&self, username: &Username) -> Result<bool, Error>;
 }
 
