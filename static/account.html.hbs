@@ -11,7 +11,7 @@
 
         <div class="change-password">
             <h2>Change Password</h2>
-            <form action="/change-password" method="POST" id="change-password-form">
+            <form action="/account/change-password" method="POST" id="change-password-form">
                 <div id="error-box" class="error" style="display:none;"></div>
                 <div id="success-box" class="success" style="display:none;"></div>
 
@@ -66,7 +66,7 @@
             const form = event.target;
             const formData = new FormData(form);
 
-            const response = await fetch("/change-password", {
+            const response = await fetch("/account/change-password", {
                 method: "POST",
                 body: formData,
                 credentials: "include",

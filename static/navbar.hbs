@@ -9,7 +9,7 @@
         {{#if user}}
             <a href="/account" class="username">{{user}}</a>
 
-            <form name="logoutform" action="/logout" method="POST" style="display: inline-block;">
+            <form name="logoutform" action="/account/logout" method="POST" style="display: inline-block;">
                 <a class="btn" href="javascript: submitlogoutform()">Logout</a>
             </form>
             <script type="text/javascript">

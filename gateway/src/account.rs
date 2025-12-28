@@ -224,8 +224,8 @@ pub async fn change_password(
     )
 }
 
-#[rocket::post("/account/delete")]
-pub async fn delete_account(
+#[rocket::post("/delete")]
+pub async fn delete(
     user: AuthUser,
     jar: &CookieJar<'_>,
     user_service: &State<Arc<dyn UserService>>,
