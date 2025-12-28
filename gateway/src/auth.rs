@@ -48,7 +48,7 @@ impl<'r> FromRequest<'r> for AuthUser {
     }
 }
 
-#[rocket::get("/logout")]
+#[rocket::post("/logout")]
 pub async fn logout(jar: &CookieJar<'_>) -> Redirect {
     jar.remove_private("user_id");
     Redirect::to("/")
