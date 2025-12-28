@@ -30,7 +30,9 @@ impl<'r> rocket::request::FromParam<'r> for UserId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, sqlx::Type)]
+#[sqlx(transparent)]
+#[repr(transparent)]
 pub struct Username(String);
 
 impl Username {
@@ -83,7 +85,9 @@ impl std::fmt::Display for Username {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, sqlx::Type)]
+#[sqlx(transparent)]
+#[repr(transparent)]
 pub struct UsernameRef<'a>(&'a str);
 
 impl<'a> UsernameRef<'a> {

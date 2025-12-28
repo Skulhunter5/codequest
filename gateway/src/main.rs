@@ -11,7 +11,7 @@ use dotenv::dotenv;
 use rocket::routes;
 use rocket_dyn_templates::Template;
 
-mod auth;
+mod account;
 mod pages;
 
 mod defaults {
@@ -69,9 +69,17 @@ async fn main() -> Result<(), rocket::Error> {
                 pages::quest,
                 pages::quest_input,
                 pages::quest_answer,
-                auth::login,
-                auth::signup,
-                auth::logout,
+                pages::account,
+            ],
+        )
+        .mount(
+            "/account",
+            routes![
+                account::login,
+                account::signup,
+                account::logout,
+                account::change_password,
+                account::delete,
             ],
         )
         .attach(Template::fairing())

@@ -73,6 +73,38 @@ impl UserService for InMemoryUserService {
         return Ok(true);
     }
 
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        if !self.users.read().await.contains_key(username) {
+            return Ok(false);
+        }
+        Ok(self.users.write().await.remove(username).is_some())
+    }
+
+    async fn change_password(
+        &self,
+        username: &Username,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<bool, Error> {
+        if self.users.read().await.contains_key(&username) {
+            return Ok(false);
+        }
+
+        let old_hash = self.hash_password(old_password);
+        let new_hash = self.hash_password(new_password);
+
+        let mut users = self.users.write().await;
+        let Some(hash) = users.get(&username) else {
+            return Ok(false);
+        };
+        if old_hash != *hash {
+            return Ok(false);
+        }
+        users.insert(username.clone(), new_hash);
+
+        return Ok(true);
+    }
+
     async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         Ok(self.users.read().await.contains_key(username))
     }
@@ -150,6 +182,34 @@ impl UserService for FileUserService {
         return Ok(created);
     }
 
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        let deleted = self.in_memory_user_service.delete_user(username).await?;
+        if deleted {
+            if let Err(e) = self.save().await {
+                eprintln!("FileUserService: failed to write users to file: {}", e);
+            }
+        }
+        Ok(deleted)
+    }
+
+    async fn change_password(
+        &self,
+        username: &Username,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<bool, Error> {
+        let password_was_changed = self
+            .in_memory_user_service
+            .change_password(username, old_password, new_password)
+            .await?;
+
+        if password_was_changed {
+            self.save().await?;
+        }
+
+        return Ok(password_was_changed);
+    }
+
     async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         self.in_memory_user_service.user_exists(username).await
     }
@@ -201,7 +261,7 @@ impl UserService for DatabaseUserService {
         Ok(sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM users WHERE (username = $1 AND password_hash = $2))",
         )
-        .bind(username.as_str())
+        .bind(username)
         .bind(&password_hash)
         .fetch_one(&self.pool)
         .await?)
@@ -210,7 +270,7 @@ impl UserService for DatabaseUserService {
     async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
         let password_hash = self.hash_password(password);
         match sqlx::query("INSERT INTO users (username, password_hash) VALUES ($1, $2)")
-            .bind(username.as_str())
+            .bind(username)
             .bind(&password_hash)
             .execute(&self.pool)
             .await
@@ -223,10 +283,53 @@ impl UserService for DatabaseUserService {
         }
     }
 
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        let res = sqlx::query("DELETE FROM users WHERE (username = $1)")
+            .bind(username)
+            .execute(&self.pool)
+            .await?;
+
+        match res.rows_affected() {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => unreachable!(
+                "SQL 'DELETE FROM users' query is constrained by primary key (username) but multiple rows ({}) were affected",
+                x
+            ),
+        }
+    }
+
+    async fn change_password(
+        &self,
+        username: &Username,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<bool, Error> {
+        let old_hash = self.hash_password(old_password);
+        let new_hash = self.hash_password(new_password);
+
+        let res = sqlx::query(
+            "UPDATE users SET password_hash = $1 WHERE (username = $2 AND password_hash = $3)",
+        )
+        .bind(new_hash)
+        .bind(username)
+        .bind(old_hash)
+        .execute(&self.pool)
+        .await?;
+        match res.rows_affected() {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => unreachable!(
+                "SQL 'UPDATE users' query is constrained by primary key (username) but multiple rows ({}) were affected",
+                x
+            ),
+        }
+    }
+
     async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         Ok(
             sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
-                .bind(username.as_str())
+                .bind(username)
                 .fetch_one(&self.pool)
                 .await?,
         )
@@ -251,6 +354,13 @@ impl BackendUserService {
 pub struct UserCredentials<'a> {
     pub username: &'a str,
     pub password: &'a str,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ChangePasswordData<'a> {
+    pub username: &'a str,
+    pub old_password: &'a str,
+    pub new_password: &'a str,
 }
 
 #[async_trait]
@@ -294,10 +404,50 @@ impl UserService for BackendUserService {
         }
     }
 
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        let response = self
+            .client
+            .delete(format!("{}/{}", &self.address, username))
+            .send()
+            .await?;
+        match response.status() {
+            StatusCode::NO_CONTENT => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn change_password(
+        &self,
+        username: &Username,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<bool, Error> {
+        let request_data = ChangePasswordData {
+            username: username.as_str(),
+            old_password,
+            new_password,
+        };
+        let response = self
+            .client
+            .post(format!("{}/change-password", &self.address))
+            .json(&request_data)
+            .send()
+            .await?;
+        match response.status() {
+            StatusCode::OK => response
+                .text()
+                .await?
+                .parse::<bool>()
+                .map_err(|_| Error::InvalidResponse),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
     async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         let response = self
             .client
-            .get(format!("{}/{}", &self.address, username.as_ref()))
+            .get(format!("{}/{}", &self.address, username))
             .send()
             .await?;
         match response.status() {

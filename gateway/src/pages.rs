@@ -8,7 +8,7 @@ use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirec
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 
-use crate::auth::AuthUser;
+use crate::account::AuthUser;
 
 #[derive(Serialize)]
 struct PageContext<'a, MainContext: Serialize> {
@@ -228,4 +228,12 @@ pub async fn quest_answer(
     } else {
         Err(http::Status::Unauthorized)
     })
+}
+
+#[rocket::get("/account")]
+pub async fn account(user: AuthUser) -> Result<Template, Error> {
+    Ok(Template::render(
+        "account",
+        PageContext::new(&Some(user), context! {}),
+    ))
 }

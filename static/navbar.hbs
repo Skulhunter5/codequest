@@ -7,8 +7,16 @@
 
     <div class="nav-right">
         {{#if user}}
-            <span class="username">{{user}}</span>
-            <a class="btn" href="/logout">Logout</a>
+            <a href="/account" class="username">{{user}}</a>
+
+            <form name="logoutform" action="/account/logout" method="POST" style="display: inline-block;">
+                <a class="btn" href="javascript: submitlogoutform()">Logout</a>
+            </form>
+            <script type="text/javascript">
+                function submitlogoutform() {
+                    document.logoutform.submit();
+                }
+            </script>
         {{else}}
             <a href="/login" class="btn">Log In</a>
             <a href="/signup" class="btn accent">Sign Up</a>

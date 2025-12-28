@@ -1,4 +1,8 @@
-body, p, li, span, label {
+body,
+p,
+li,
+span,
+label {
     color: #eee;
 }
 
@@ -49,6 +53,22 @@ nav .btn:hover {
     background: #333;
 }
 
+nav form .btn {
+    background: #1a1a1a;
+    color: #cfcfcf;
+    text-decoration: none;
+    margin-right: 1rem;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #444;
+    border-radius: 6px;
+    transition: 0.2s;
+}
+
+nav form .btn:hover {
+    background: #333;
+    color: #a084ff;
+}
+
 nav .accent {
     background: #3c1fa8;
     border-color: #3c1fa8;
@@ -87,7 +107,9 @@ h1 {
     font-size: 1.2rem;
     color: #dcdcdc;
     text-decoration: none;
-    transition: transform 0.15s ease, border-color 0.2s;
+    transition:
+        transform 0.15s ease,
+        border-color 0.2s;
 }
 
 .card:hover {
@@ -154,6 +176,16 @@ h1 {
     margin-bottom: 1rem;
 }
 
+.success {
+    background: #1f3c1f;
+    border: 1px solid #3b3;
+    padding: 0.7rem;
+    border-radius: 6px;
+    color: #9aff9a;
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
 main a {
     color: #a084ff;
     text-decoration: none;
@@ -162,4 +194,66 @@ main a {
 
 main a:hover {
     color: #c0a8ff;
+}
+
+.error-message {
+    color: #ff9a9a;
+    margin-bottom: 1rem;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
+.account-info,
+.change-password,
+.delete-account {
+    background: #1a1a1a;
+    padding: 2rem;
+    border-radius: 12px;
+    border: 2px solid #2d2d2d;
+    margin-bottom: 2rem;
+}
+
+.account-info h2,
+.change-password h2,
+.delete-account h2 {
+    color: #a084ff;
+    margin-top: 0;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-group label {
+    font-weight: bold;
+    color: #a084ff;
+    margin-bottom: 0.5rem;
+}
+
+.form-group input {
+    padding: 0.6rem;
+    border-radius: 6px;
+    border: 1px solid #444;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    font-family: inherit;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #5933d4;
 }

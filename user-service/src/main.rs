@@ -3,7 +3,7 @@ use std::{env, fs::DirBuilder, sync::Arc};
 use codequest_common::{
     Credentials, Error, Username, load_or_generate_salt, load_secret_key, services::UserService,
 };
-use codequest_user_service::{DatabaseUserService, UserCredentials};
+use codequest_user_service::{ChangePasswordData, DatabaseUserService, UserCredentials};
 use dotenv::dotenv;
 use rocket::{State, http, routes, serde::json::Json};
 
@@ -43,6 +43,35 @@ async fn add_user(
             (http::Status::Conflict, "")
         },
     )
+}
+
+#[rocket::delete("/<username>")]
+async fn delete_user(
+    username: &str,
+    user_service: &State<Arc<dyn UserService>>,
+) -> Result<(http::Status, &'static str), Error> {
+    let username = Username::build(username)?;
+    Ok(if user_service.delete_user(&username).await? {
+        (http::Status::NoContent, "")
+    } else {
+        (http::Status::NotFound, "")
+    })
+}
+
+#[rocket::post("/change-password", format = "json", data = "<request_data>")]
+async fn change_password(
+    request_data: Json<ChangePasswordData<'_>>,
+    user_service: &State<Arc<dyn UserService>>,
+) -> Result<String, Error> {
+    let username = Username::build(request_data.username)?;
+    user_service
+        .change_password(
+            &username,
+            request_data.old_password,
+            request_data.new_password,
+        )
+        .await
+        .map(|password_was_changed| password_was_changed.to_string())
 }
 
 #[rocket::post("/login", format = "json", data = "<credentials>")]
@@ -101,7 +130,16 @@ async fn main() -> Result<(), rocket::Error> {
         .expect("failed to start DatabaseUserService");
 
     rocket::custom(&rocket_config)
-        .mount("/user", routes![get_user, add_user, verify_password])
+        .mount(
+            "/user",
+            routes![
+                get_user,
+                add_user,
+                delete_user,
+                change_password,
+                verify_password
+            ],
+        )
         .manage(Arc::new(user_service) as Arc<dyn UserService>)
         .launch()
         .await?;

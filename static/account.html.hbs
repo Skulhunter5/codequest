@@ -1,0 +1,102 @@
+{{#*inline "title"}}Account{{/inline}}
+
+{{#*inline "body"}}
+    <div class="container">
+        <h1>Account</h1>
+
+        <div class="account-info">
+            <h2>Profile</h2>
+            <p><strong>Username:</strong> {{user}}</p>
+        </div>
+
+        <div class="change-password">
+            <h2>Change Password</h2>
+            <form action="/account/change-password" method="POST" id="change-password-form">
+                <div id="error-box" class="error" style="display:none;"></div>
+                <div id="success-box" class="success" style="display:none;"></div>
+
+                <div class="form-group">
+                    <label for="current-password">Current Password</label>
+                    <input type="password" id="current-password" name="currentPassword" required>
+                </div>
+                <div class="form-group">
+                    <label for="new-password">New Password</label>
+                    <input type="password" id="new-password" name="newPassword" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">Confirm New Password</label>
+                    <input type="password" id="confirm-password" required>
+                </div>
+
+                <div id="password-error" class="error-message" style="display: none;">Passwords do not match.</div>
+                <button type="submit" class="submit-btn">Change Password</button>
+            </form>
+        </div>
+
+        <div class="delete-account">
+            <h2>Delete Account</h2>
+            <p>This action is irreversible. All your data will be permanently deleted.</p>
+            <form action="/account/delete" method="POST">
+                <button type="submit" class="btn btn-danger">Delete My Account</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const currentPasswordField = document.getElementById('current-password');
+        const newPasswordField = document.getElementById('new-password');
+        const confirmPasswordField = document.getElementById('confirm-password');
+        const passwordError = document.getElementById('password-error');
+
+        document.getElementById("change-password-form").addEventListener("submit", async (e) => {
+            event.preventDefault();
+
+            const errorBox = document.getElementById("error-box");
+            const successBox = document.getElementById("success-box");
+            errorBox.style.display = "none";
+            successBox.style.display = "none";
+
+            if (newPasswordField.value !== confirmPasswordField.value) {
+                passwordError.style.display = "block";
+                return;
+            } else {
+                passwordError.style.display = "none";
+            }
+
+            const form = event.target;
+            const formData = new FormData(form);
+
+            const response = await fetch("/account/change-password", {
+                method: "POST",
+                body: formData,
+                credentials: "include",
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                successBox.textContent = "Password changed!";
+                successBox.style.display = "block";
+
+                currentPasswordField.value = "";
+                newPasswordField.value = "";
+                confirmPasswordField.value = "";
+
+                return;
+            } else {
+                const errorText = data.error;
+                const errorBox = document.getElementById("error-box");
+                errorBox.textContent = errorText || "Unknown error.";
+                errorBox.style.display = "block";
+
+                currentPasswordField.value = "";
+                newPasswordField.value = "";
+                confirmPasswordField.value = "";
+
+                return;
+            }
+        });
+    </script>
+{{/inline}}
+
+{{> base user=user}}

@@ -3,7 +3,7 @@
 {{#*inline "body"}}
     <h1>Create an Account</h1>
 
-    <form id="signup-form" class="form-box" method="POST" action="/signup">
+    <form id="signup-form" class="form-box" method="POST" action="/account/signup">
         <div id="error-box" class="error" style="display:none;"></div>
 
         <label>Username</label>
@@ -33,7 +33,7 @@
         const form = e.target;
         const formData = new FormData(form);
 
-        const response = await fetch("/signup", {
+        const response = await fetch("/account/signup", {
             method: "POST",
             body: formData,
             credentials: "include",
