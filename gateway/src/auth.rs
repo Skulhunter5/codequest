@@ -223,3 +223,15 @@ pub async fn change_password(
         },
     )
 }
+
+#[rocket::post("/account/delete")]
+pub async fn delete_account(
+    user: AuthUser,
+    jar: &CookieJar<'_>,
+    user_service: &State<Arc<dyn UserService>>,
+) -> Result<Redirect, Error> {
+    if user_service.delete_user(&user.username).await? {
+        jar.remove_private("user_id");
+    }
+    Ok(Redirect::to("/"))
+}

@@ -74,6 +74,7 @@ async fn main() -> Result<(), rocket::Error> {
                 auth::signup,
                 auth::logout,
                 auth::change_password,
+                auth::delete_account,
             ],
         )
         .attach(Template::fairing())

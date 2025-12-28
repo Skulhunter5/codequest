@@ -45,6 +45,19 @@ async fn add_user(
     )
 }
 
+#[rocket::delete("/<username>")]
+async fn delete_user(
+    username: &str,
+    user_service: &State<Arc<dyn UserService>>,
+) -> Result<(http::Status, &'static str), Error> {
+    let username = Username::build(username)?;
+    Ok(if user_service.delete_user(&username).await? {
+        (http::Status::NoContent, "")
+    } else {
+        (http::Status::NotFound, "")
+    })
+}
+
 #[rocket::post("/change-password", format = "json", data = "<request_data>")]
 async fn change_password(
     request_data: Json<ChangePasswordData<'_>>,
@@ -119,7 +132,13 @@ async fn main() -> Result<(), rocket::Error> {
     rocket::custom(&rocket_config)
         .mount(
             "/user",
-            routes![get_user, add_user, change_password, verify_password],
+            routes![
+                get_user,
+                add_user,
+                delete_user,
+                change_password,
+                verify_password
+            ],
         )
         .manage(Arc::new(user_service) as Arc<dyn UserService>)
         .launch()

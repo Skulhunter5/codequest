@@ -73,6 +73,13 @@ impl UserService for InMemoryUserService {
         return Ok(true);
     }
 
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        if !self.users.read().await.contains_key(username) {
+            return Ok(false);
+        }
+        Ok(self.users.write().await.remove(username).is_some())
+    }
+
     async fn change_password(
         &self,
         username: &Username,
@@ -175,6 +182,16 @@ impl UserService for FileUserService {
         return Ok(created);
     }
 
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        let deleted = self.in_memory_user_service.delete_user(username).await?;
+        if deleted {
+            if let Err(e) = self.save().await {
+                eprintln!("FileUserService: failed to write users to file: {}", e);
+            }
+        }
+        Ok(deleted)
+    }
+
     async fn change_password(
         &self,
         username: &Username,
@@ -263,6 +280,22 @@ impl UserService for DatabaseUserService {
                 Ok(false)
             }
             Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        let res = sqlx::query("DELETE FROM users WHERE (username = $1)")
+            .bind(username)
+            .execute(&self.pool)
+            .await?;
+
+        match res.rows_affected() {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => unreachable!(
+                "SQL 'DELETE FROM users' query is constrained by primary key (username) but multiple rows ({}) were affected",
+                x
+            ),
         }
     }
 
@@ -371,6 +404,19 @@ impl UserService for BackendUserService {
         }
     }
 
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        let response = self
+            .client
+            .delete(format!("{}/{}", &self.address, username))
+            .send()
+            .await?;
+        match response.status() {
+            StatusCode::NO_CONTENT => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
     async fn change_password(
         &self,
         username: &Username,
@@ -401,7 +447,7 @@ impl UserService for BackendUserService {
     async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
         let response = self
             .client
-            .get(format!("{}/{}", &self.address, username.as_ref()))
+            .get(format!("{}/{}", &self.address, username))
             .send()
             .await?;
         match response.status() {
