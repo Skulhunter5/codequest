@@ -3,7 +3,9 @@ use std::{env, fs::DirBuilder, sync::Arc};
 use codequest_common::{
     Credentials, Error, Username, load_or_generate_salt, load_secret_key, services::UserService,
 };
-use codequest_user_service::{ChangePasswordData, DatabaseUserService, UserCredentials};
+use codequest_user_service::{
+    ChangePasswordData, DatabaseUserService, UserCredentials, UserServiceNatsWrapper,
+};
 use dotenv::dotenv;
 use rocket::{State, http, routes, serde::json::Json};
 
@@ -100,6 +102,8 @@ async fn main() -> Result<(), rocket::Error> {
     let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
     let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
 
+    let nats_address = env::var("NATS_ADDRESS").expect("NATS_ADDRESS not set");
+
     DirBuilder::new()
         .recursive(true)
         .create(defaults::RUN_DIR)
@@ -128,6 +132,9 @@ async fn main() -> Result<(), rocket::Error> {
     let user_service = DatabaseUserService::new(&db_address, &db_name, db_credentials, salt)
         .await
         .expect("failed to start DatabaseUserService");
+    let user_service = UserServiceNatsWrapper::new(Arc::new(user_service), nats_address)
+        .await
+        .expect("failed to start nats wrapper");
 
     rocket::custom(&rocket_config)
         .mount(

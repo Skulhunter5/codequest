@@ -53,20 +53,11 @@ impl From<sqlx::Error> for Error {
     }
 }
 
-impl From<async_nats::ConnectError> for Error {
-    fn from(error: async_nats::ConnectError) -> Self {
-        Self::Nats(error.into())
-    }
-}
-
-impl From<async_nats::jetstream::context::CreateStreamError> for Error {
-    fn from(error: async_nats::jetstream::context::CreateStreamError) -> Self {
-        Self::Nats(error.into())
-    }
-}
-
-impl From<async_nats::jetstream::context::PublishError> for Error {
-    fn from(error: async_nats::jetstream::context::PublishError) -> Self {
+impl<Kind> From<async_nats::error::Error<Kind>> for Error
+where
+    Kind: 'static + Clone + std::fmt::Debug + std::fmt::Display + PartialEq + Send + Sync,
+{
+    fn from(error: async_nats::error::Error<Kind>) -> Self {
         Self::Nats(error.into())
     }
 }

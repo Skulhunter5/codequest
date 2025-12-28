@@ -3,6 +3,7 @@ use std::{fs, io, path::Path};
 
 mod credentials;
 mod error;
+pub mod nats;
 mod quest;
 pub mod services;
 mod user;

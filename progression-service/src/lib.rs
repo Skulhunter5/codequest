@@ -8,6 +8,7 @@ use std::{
 
 use codequest_common::{
     Credentials, Error, QuestId,
+    nats::{NatsClient, UserEvent},
     services::{ProgressionService, QuestService},
 };
 use reqwest::{Client, StatusCode};
@@ -186,6 +187,7 @@ impl DatabaseProgressionService {
         address: S,
         db_name: S,
         credentials: Credentials,
+        nats_address: impl AsRef<str>,
     ) -> Result<Self, Error> {
         let pool = PgPoolOptions::new()
             .max_connections(20)
@@ -200,6 +202,34 @@ impl DatabaseProgressionService {
                 .as_str(),
             )
             .await?;
+        let pool2 = pool.clone();
+
+        let nats_client = NatsClient::new(nats_address).await?;
+
+        let _join_handle = rocket::tokio::spawn(async move {
+            println!("NATS garbage collector started");
+            let pool = pool2;
+            let _x = nats_client
+                .consume::<UserEvent>(
+                    "USER_EVENTS",
+                    "progression-service".to_owned(),
+                    async move |event| {
+                        match event {
+                            UserEvent::Deleted(username) => {
+                                let _query_result =
+                                    sqlx::query("DELETE FROM progression WHERE (username = $1)")
+                                        .bind(&username)
+                                        .execute(&pool)
+                                        .await?;
+                            }
+                            UserEvent::Created(_) => (),
+                        }
+                        Ok(())
+                    },
+                )
+                .await
+                .expect("NATS garbage collector crashed");
+        });
 
         sqlx::migrate!().run(&pool).await?;
 

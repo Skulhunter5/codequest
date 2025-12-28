@@ -74,6 +74,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - DB_ADDRESS=codequest-postgres:5432
+      - NATS_ADDRESS=codequest-nats:4222
       - DB_USERNAME_USER_SERVICE=${DB_USERNAME_USER_SERVICE}
       - DB_PASSWORD_USER_SERVICE=${DB_PASSWORD_USER_SERVICE}
       - SALT_FILE=/run/secrets/salt
@@ -108,6 +109,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - DB_ADDRESS=codequest-postgres:5432
+      - NATS_ADDRESS=codequest-nats:4222
       - QUEST_SERVICE_ADDRESS=http://codequest-quest-service:8000/quest
       - DB_USERNAME_PROGRESSION_SERVICE=${DB_USERNAME_PROGRESSION_SERVICE}
       - DB_PASSWORD_PROGRESSION_SERVICE=${DB_PASSWORD_PROGRESSION_SERVICE}

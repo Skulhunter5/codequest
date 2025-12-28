@@ -64,6 +64,8 @@ async fn main() -> Result<(), rocket::Error> {
     let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
     let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
 
+    let nats_address = env::var("NATS_ADDRESS").expect("NATS_ADDRESS not set");
+
     DirBuilder::new()
         .recursive(true)
         .create(defaults::RUN_DIR)
@@ -91,10 +93,15 @@ async fn main() -> Result<(), rocket::Error> {
     let quest_service =
         Arc::new(BackendQuestService::new(quest_service_address)) as Arc<dyn QuestService>;
 
-    let progression_service =
-        DatabaseProgressionService::new(quest_service, &db_address, &db_name, db_credentials)
-            .await
-            .expect("failed to start DatabaseQuestService");
+    let progression_service = DatabaseProgressionService::new(
+        quest_service,
+        &db_address,
+        &db_name,
+        db_credentials,
+        nats_address,
+    )
+    .await
+    .expect("failed to start DatabaseQuestService");
 
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])

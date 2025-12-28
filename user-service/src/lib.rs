@@ -3,10 +3,15 @@ use std::{
     fs::File as StdFile,
     io,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
-use codequest_common::{Credentials, Error, Username, services::UserService};
+use codequest_common::{
+    Credentials, Error, Username,
+    nats::{NatsClient, UserEvent},
+    services::UserService,
+};
 use reqwest::{Client, StatusCode};
 use rocket::{
     async_trait,
@@ -455,5 +460,67 @@ impl UserService for BackendUserService {
             StatusCode::NOT_FOUND => Ok(false),
             _ => Err(Error::InvalidResponse),
         }
+    }
+}
+
+pub struct UserServiceNatsWrapper {
+    user_service: Arc<dyn UserService>,
+    nats_client: NatsClient,
+}
+
+impl UserServiceNatsWrapper {
+    pub async fn new(
+        user_service: Arc<dyn UserService>,
+        nats_address: impl AsRef<str>,
+    ) -> Result<Self, Error> {
+        let nats_client = NatsClient::new(nats_address).await?;
+        Ok(Self {
+            user_service,
+            nats_client,
+        })
+    }
+}
+
+#[async_trait]
+impl UserService for UserServiceNatsWrapper {
+    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
+        self.user_service.verify_password(username, password).await
+    }
+
+    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
+        let res = self.user_service.add_user(username.clone(), password).await;
+        match res {
+            Ok(true) => self.nats_client.emit(UserEvent::Created(username)).await?,
+            _ => (),
+        }
+        return res;
+    }
+
+    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+        let res = self.user_service.delete_user(username).await;
+        match res {
+            Ok(true) => {
+                self.nats_client
+                    .emit(UserEvent::Deleted(username.clone()))
+                    .await?
+            }
+            _ => (),
+        }
+        return res;
+    }
+
+    async fn change_password(
+        &self,
+        username: &Username,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<bool, Error> {
+        self.user_service
+            .change_password(username, old_password, new_password)
+            .await
+    }
+
+    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
+        self.user_service.user_exists(username).await
     }
 }

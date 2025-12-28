@@ -11,3 +11,4 @@ argon2 = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 sqlx = { workspace = true }
 dotenv = { workspace = true }
+async-nats = { workspace = true }
