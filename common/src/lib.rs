@@ -13,9 +13,9 @@ pub use error::Error;
 pub use quest::{Quest, QuestId, QuestItem};
 pub use user::{User, UserId, Username};
 
-pub fn load_or_generate_salt<P: AsRef<Path>>(path: P) -> SaltString {
+pub fn load_salt(path: impl AsRef<Path>) -> SaltString {
     if let Ok(salt) = fs::read_to_string(&path) {
-        return SaltString::from_b64(&salt).expect("failed to create salt");
+        return SaltString::from_b64(&salt.trim()).expect("failed to create salt");
     }
 
     let salt = SaltString::generate(&mut OsRng);
@@ -23,6 +23,16 @@ pub fn load_or_generate_salt<P: AsRef<Path>>(path: P) -> SaltString {
     return salt;
 }
 
-pub fn load_secret_key<P: AsRef<Path>>(path: P) -> io::Result<String> {
-    fs::read_to_string(path)
+pub fn load_or_generate_salt(path: impl AsRef<Path>) -> SaltString {
+    if let Ok(salt) = fs::read_to_string(&path) {
+        return SaltString::from_b64(&salt.trim()).expect("failed to create salt");
+    }
+
+    let salt = SaltString::generate(&mut OsRng);
+    fs::write(path, salt.as_str()).expect("failed to write salt to file");
+    return salt;
+}
+
+pub fn load_secret_key(path: impl AsRef<Path>) -> io::Result<String> {
+    fs::read_to_string(path).map(|s| s.trim().to_owned())
 }
