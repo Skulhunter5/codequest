@@ -1,4 +1,4 @@
-use std::{env, fs::DirBuilder, sync::Arc};
+use std::{env, sync::Arc};
 
 use codequest_common::{
     Credentials, Error, QuestId, load_secret_key,
@@ -14,8 +14,7 @@ use rocket::{
 };
 
 mod defaults {
-    pub const RUN_DIR: &'static str = "./run";
-    pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+    pub const SECRET_KEY_FILE: &'static str = "./secrets/secret_key";
     pub const PORT: u16 = 8000;
 }
 
@@ -65,11 +64,6 @@ async fn main() -> Result<(), rocket::Error> {
     let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
 
     let nats_address = env::var("NATS_ADDRESS").expect("NATS_ADDRESS not set");
-
-    DirBuilder::new()
-        .recursive(true)
-        .create(defaults::RUN_DIR)
-        .expect("failed to create run dir");
 
     let secret_key = load_secret_key(
         env::var("SECRET_KEY_FILE").unwrap_or_else(|_| defaults::SECRET_KEY_FILE.to_owned()),

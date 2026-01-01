@@ -32,8 +32,8 @@ Now all codequest-containers should be available in the local docker images. \
     DB_USERNAME_PROGRESSION_SERVICE=progression_service
     DB_PASSWORD_PROGRESSION_SERVICE=pgpass_progression
     ```
-2. Create directory `./secrets/`
-3. Create secrets
-    - Create 256-bit random base64-encoded random material in `./secrets/secret_key` (e.g. using `openssl rand -base64 32 > ./secrets/secret_key`)
-    - Create 16-byte random base64-encoded random material in `./secrets/salt` (e.g. using `openssl rand -base64 16 > ./secrets/salt`)
-4. Start the docker compose stack: `docker compose up -d`
+2. Create secrets (optional when using the provided `compose.yml`)
+    - Create directory `./secrets/`
+    - Create 32-byte base64-encoded, cryptographically secure, random material in `./secrets/secret_key` (e.g. using `head -c32 /dev/urandom | base64 > ./secrets/secret_key` or `openssl rand -base64 32 > ./secrets/secret_key`)
+    - Create 16-byte base64-encoded random material in `./secrets/salt` (e.g. using `head -c16 /dev/urandom | base64 > ./secrets/salt` or `openssl rand -base64 16 > ./secrets/salt`)
+3. Start the docker compose stack: `docker compose up -d`

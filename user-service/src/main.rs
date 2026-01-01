@@ -1,7 +1,7 @@
-use std::{env, fs::DirBuilder, sync::Arc};
+use std::{env, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Username, load_or_generate_salt, load_secret_key, services::UserService,
+    Credentials, Error, Username, load_salt, load_secret_key, services::UserService,
 };
 use codequest_user_service::{
     ChangePasswordData, DatabaseUserService, UserCredentials, UserServiceNatsWrapper,
@@ -10,9 +10,8 @@ use dotenv::dotenv;
 use rocket::{State, http, routes, serde::json::Json};
 
 mod defaults {
-    pub const RUN_DIR: &'static str = "./run";
-    pub const SALT_FILE: &'static str = "./run/salt";
-    pub const SECRET_KEY_FILE: &'static str = "./run/secret_key";
+    pub const SALT_FILE: &'static str = "./secrets/salt";
+    pub const SECRET_KEY_FILE: &'static str = "./secrets/secret_key";
     pub const PORT: u16 = 8000;
 }
 
@@ -104,14 +103,8 @@ async fn main() -> Result<(), rocket::Error> {
 
     let nats_address = env::var("NATS_ADDRESS").expect("NATS_ADDRESS not set");
 
-    DirBuilder::new()
-        .recursive(true)
-        .create(defaults::RUN_DIR)
-        .expect("failed to create run dir");
-
-    let salt = load_or_generate_salt(
-        env::var("SALT_FILE").unwrap_or_else(|_| defaults::SALT_FILE.to_owned()),
-    );
+    let salt_file = env::var("SALT_FILE").unwrap_or_else(|_| defaults::SALT_FILE.to_owned());
+    let salt = load_salt(salt_file).expect("failed to load salt");
 
     let secret_key = load_secret_key(
         env::var("SECRET_KEY_FILE").unwrap_or_else(|_| defaults::SECRET_KEY_FILE.to_owned()),
