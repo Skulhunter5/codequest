@@ -15,6 +15,17 @@ single_dockerfile_test:
 	docker tag $$(docker image ls -a -q --filter=dangling=true --filter=label=service=quests) codequest-quest-service || true
 	docker tag $$(docker image ls -a -q --filter=dangling=true --filter=label=service=progression) codequest-progression-service || true
 
+SECRETS_DIR=./secrets
+SECRET_KEY_FILE=$(SECRETS_DIR)/secret_key
+SALT_FILE=$(SECRETS_DIR)/salt
+
+generate_secrets:
+	mkdir -p $(SECRETS_DIR)
+	touch $(SECRET_KEY_FILE)
+	chmod 600 $(SECRET_KEY_FILE)
+	head -c32 /dev/urandom | base64 > $(SECRET_KEY_FILE)
+	head -c18 /dev/urandom | base64 > $(SALT_FILE)
+
 GENERATORS_DIR=run/quests/generators
 
 debug_quests:
