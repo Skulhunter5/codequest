@@ -1,4 +1,4 @@
-use argon2::password_hash::{Salt, SaltString};
+use argon2::password_hash::{SaltString, rand_core::OsRng};
 use base64::{Engine as _, prelude::BASE64_STANDARD};
 use rand::RngCore;
 use std::{
@@ -31,21 +31,13 @@ pub fn load_or_generate_salt(path: impl AsRef<Path>) -> io::Result<SaltString> {
         Err(e) => return Err(e),
     }
 
-    let generated_salt =
-        generate_base64_encoded_cryptographically_safe_random_material(Salt::RECOMMENDED_LENGTH);
-    fs::write(path, &generated_salt)?;
-    let generated_salt = SaltString::from_b64(&generated_salt).unwrap();
+    let generated_salt = SaltString::generate(&mut OsRng);
+    fs::write(path, &generated_salt.as_str())?;
     return Ok(generated_salt);
 }
 
 pub fn load_secret_key(path: impl AsRef<Path>) -> io::Result<String> {
     fs::read_to_string(path).map(|s| s.trim().to_owned())
-}
-
-fn generate_base64_encoded_cryptographically_safe_random_material(bytes: usize) -> String {
-    let mut bytes = vec![0; bytes];
-    rand::rng().fill_bytes(&mut bytes);
-    BASE64_STANDARD.encode(&bytes)
 }
 
 pub fn load_or_generate_secret_key(path: impl AsRef<Path>) -> io::Result<String> {
@@ -55,7 +47,10 @@ pub fn load_or_generate_secret_key(path: impl AsRef<Path>) -> io::Result<String>
         Err(e) => return Err(e),
     }
 
-    let generated_secret_key = generate_base64_encoded_cryptographically_safe_random_material(32);
+    let mut bytes = vec![0; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    let generated_secret_key = BASE64_STANDARD.encode(&bytes);
+
     let mut file = File::create(&path)?;
     file.set_permissions(Permissions::from_mode(0o600))?;
     file.write_all(&generated_secret_key.as_bytes())?;
