@@ -41,11 +41,7 @@ services:
     networks:
       - codequest-net
     environment:
-      - SALT_FILE=/app/secrets/salt
-      - SECRET_KEY_FILE=/app/secrets/secret_key
       - NATS_ADDRESS=codequest-nats:4222
-    volumes:
-      - ./secrets/:/app/secrets
   gateway:
     image: codequest-gateway
     container_name: codequest-gateway
