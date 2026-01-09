@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use codequest_common::{
     Error, QuestId, QuestItem,
-    services::{ProgressionService, QuestService},
+    services::{ProgressionService, QuestService, StatisticsService},
 };
 use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirect};
 use rocket_dyn_templates::{Template, context};
@@ -215,13 +215,16 @@ pub async fn quest_answer(
         {
             Some(answer_was_correct) => Ok(Template::render(
                 "answer",
-                context! {
-                    answer_was_correct,
-                    quest: context! {
-                        name: &quest.item.name,
-                        id: &quest.item.id,
+                PageContext::new(
+                    &Some(user),
+                    context! {
+                        answer_was_correct,
+                        quest: context! {
+                            name: &quest.item.name,
+                            id: &quest.item.id,
+                        },
                     },
-                },
+                ),
             )),
             None => Err(http::Status::NotFound),
         }
@@ -235,5 +238,31 @@ pub async fn account(user: AuthUser) -> Result<Template, Error> {
     Ok(Template::render(
         "account",
         PageContext::new(&Some(user), context! {}),
+    ))
+}
+
+#[rocket::get("/account/statistics")]
+pub async fn account_statistics(
+    user: AuthUser,
+    statistics_service: &State<Arc<dyn StatisticsService>>,
+) -> Result<Template, Error> {
+    let metrics = statistics_service.get_user_metrics(&user.username).await?;
+    let statistics = metrics
+        .into_iter()
+        .map(|metric| {
+            context! {
+                name: metric.get_display_name(),
+                value: metric.value,
+            }
+        })
+        .collect::<Vec<_>>();
+    Ok(Template::render(
+        "account-statistics",
+        PageContext::new(
+            &Some(user),
+            context! {
+                statistics,
+            },
+        ),
     ))
 }

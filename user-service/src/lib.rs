@@ -8,9 +8,7 @@ use std::{
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use codequest_common::{
-    Credentials, Error, Username,
-    nats::{NatsClient, UserEvent},
-    services::UserService,
+    Credentials, Error, Username, event::UserEvent, nats::NatsClient, services::UserService,
 };
 use reqwest::{Client, StatusCode};
 use rocket::{

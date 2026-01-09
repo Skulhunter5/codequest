@@ -1,0 +1,23 @@
+{{#*inline "title"}}Account{{/inline}}
+
+{{#*inline "body"}}
+    <h1>Statistics</h1>
+    <div class="container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Statistic</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            {{#each statistics}}
+                <tr>
+                    <td>{{name}}</td>
+                    <td>{{value}}</td>
+                </tr>
+            {{/each}}
+        </table>
+    </div>
+{{/inline}}
+
+{{> base user=user}}

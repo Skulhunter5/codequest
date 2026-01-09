@@ -10,9 +10,11 @@ use std::{
 
 mod credentials;
 mod error;
+pub mod event;
 pub mod nats;
 mod quest;
 pub mod services;
+pub mod statistics;
 mod user;
 
 pub use credentials::Credentials;

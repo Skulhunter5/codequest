@@ -2,10 +2,11 @@ use std::{env, sync::Arc};
 
 use codequest_common::{
     load_secret_key,
-    services::{ProgressionService, QuestService, UserService},
+    services::{ProgressionService, QuestService, StatisticsService, UserService},
 };
 use codequest_progression_service::BackendProgressionService;
 use codequest_quest_service::BackendQuestService;
+use codequest_statistics_service::BackendStatisticsService;
 use codequest_user_service::BackendUserService;
 use dotenv::dotenv;
 use rocket::routes;
@@ -45,10 +46,13 @@ async fn main() -> Result<(), rocket::Error> {
         env::var("QUEST_SERVICE_ADDRESS").expect("QUEST_SERVICE_ADDRESS not set");
     let progression_service_address =
         env::var("PROGRESSION_SERVICE_ADDRESS").expect("PROGRESSION_SERVICE_ADDRESS not set");
+    let statistics_service_address =
+        env::var("STATISTICS_SERVICE_ADDRESS").expect("STATISTICS_SERVICE_ADDRESS not set");
 
     let user_service = BackendUserService::new(user_service_address);
     let quest_service = BackendQuestService::new(quest_service_address);
     let progression_service = BackendProgressionService::new(progression_service_address);
+    let statistics_service = BackendStatisticsService::new(statistics_service_address);
 
     rocket::custom(&rocket_config)
         .mount(
@@ -64,6 +68,7 @@ async fn main() -> Result<(), rocket::Error> {
                 pages::quest_input,
                 pages::quest_answer,
                 pages::account,
+                pages::account_statistics,
             ],
         )
         .mount(
@@ -80,6 +85,7 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(Arc::new(user_service) as Arc<dyn UserService>)
         .manage(Arc::new(quest_service) as Arc<dyn QuestService>)
         .manage(Arc::new(progression_service) as Arc<dyn ProgressionService>)
+        .manage(Arc::new(statistics_service) as Arc<dyn StatisticsService>)
         .launch()
         .await?;
 

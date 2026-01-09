@@ -1,27 +1,7 @@
 use async_nats::jetstream;
 use rocket::futures::TryStreamExt as _;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{Error, Username};
-
-pub trait Event: Serialize + DeserializeOwned {
-    fn get_subject(&self) -> &'static str;
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum UserEvent {
-    Created(Username),
-    Deleted(Username),
-}
-
-impl Event for UserEvent {
-    fn get_subject(&self) -> &'static str {
-        match self {
-            Self::Created(_) => "user.events.created",
-            Self::Deleted(_) => "user.events.deleted",
-        }
-    }
-}
+use crate::{Error, event::Event};
 
 pub struct NatsClient {
     js: jetstream::Context,

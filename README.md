@@ -31,6 +31,8 @@ Now all codequest-containers should be available in the local docker images. \
     DB_PASSWORD_QUEST_SERVICE=pgpass_quest
     DB_USERNAME_PROGRESSION_SERVICE=progression_service
     DB_PASSWORD_PROGRESSION_SERVICE=pgpass_progression
+    DB_USERNAME_STATISTICS_SERVICE=statistics_service
+    DB_PASSWORD_STATISTICS_SERVICE=pgpass_statistics
     ```
 2. Create secrets
     - Either run `make generate_secrets`

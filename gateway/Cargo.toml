@@ -8,6 +8,7 @@ codequest-common = { path = "../common/" }
 codequest-user-service = { path = "../user-service/" }
 codequest-quest-service = { path = "../quest-service/" }
 codequest-progression-service = { path = "../progression-service/" }
+codequest-statistics-service = { path = "../statistics-service/" }
 rocket = { workspace = true, features = ["secrets", "json"] }
 rocket_dyn_templates = { version = "0.2", features = ["handlebars"] }
 serde = { workspace = true }

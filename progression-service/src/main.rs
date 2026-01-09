@@ -4,7 +4,7 @@ use codequest_common::{
     Credentials, Error, QuestId, load_secret_key,
     services::{ProgressionService, QuestService},
 };
-use codequest_progression_service::DatabaseProgressionService;
+use codequest_progression_service::{DatabaseProgressionService, ProgressionServiceNatsWrapper};
 use codequest_quest_service::BackendQuestService;
 use dotenv::dotenv;
 use rocket::{
@@ -92,10 +92,14 @@ async fn main() -> Result<(), rocket::Error> {
         &db_address,
         &db_name,
         db_credentials,
-        nats_address,
+        nats_address.clone(),
     )
     .await
-    .expect("failed to start DatabaseQuestService");
+    .expect("failed to start DatabaseProgressionService");
+    let progression_service =
+        ProgressionServiceNatsWrapper::new(Arc::new(progression_service), nats_address)
+            .await
+            .expect("failed to start nats wrapper");
 
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])

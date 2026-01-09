@@ -7,8 +7,9 @@ use std::{
 };
 
 use codequest_common::{
-    Credentials, Error, QuestId,
-    nats::{NatsClient, UserEvent},
+    Credentials, Error, QuestId, Username,
+    event::{ProgressionEvent, UserEvent},
+    nats::NatsClient,
     services::{ProgressionService, QuestService},
 };
 use reqwest::{Client, StatusCode};
@@ -359,5 +360,66 @@ impl ProgressionService for BackendProgressionService {
             StatusCode::NOT_FOUND => Ok(None),
             _ => Err(Error::InvalidResponse),
         }
+    }
+}
+
+pub struct ProgressionServiceNatsWrapper {
+    progression_service: Arc<dyn ProgressionService>,
+    nats_client: NatsClient,
+}
+
+impl ProgressionServiceNatsWrapper {
+    pub async fn new(
+        progression_service: Arc<dyn ProgressionService>,
+        nats_address: impl AsRef<str>,
+    ) -> Result<Self, Error> {
+        let nats_client = NatsClient::new(nats_address).await?;
+        Ok(Self {
+            progression_service,
+            nats_client,
+        })
+    }
+}
+
+#[async_trait]
+impl ProgressionService for ProgressionServiceNatsWrapper {
+    async fn has_user_completed_quest(
+        &self,
+        username: &str,
+        quest_id: &QuestId,
+    ) -> Result<bool, Error> {
+        self.progression_service
+            .has_user_completed_quest(username, quest_id)
+            .await
+    }
+
+    async fn submit_answer(
+        &self,
+        username: &str,
+        quest_id: &QuestId,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        let res = self
+            .progression_service
+            .submit_answer(username, quest_id, answer)
+            .await?;
+        if let Some(correct) = res {
+            let username = Username::build(username)?;
+            self.nats_client
+                .emit(ProgressionEvent::AnswerSubmitted {
+                    username: username.clone(),
+                    correct,
+                })
+                .await?;
+            if correct {
+                self.nats_client
+                    .emit(ProgressionEvent::QuestCompleted {
+                        username: username,
+                        quest_id: quest_id.clone(),
+                    })
+                    .await?
+            }
+        }
+        return Ok(res);
     }
 }

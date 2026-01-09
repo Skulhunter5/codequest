@@ -1,6 +1,6 @@
 use rocket::async_trait;
 
-use crate::{Error, Quest, QuestId, QuestItem, Username};
+use crate::{Error, Quest, QuestId, QuestItem, Username, statistics::Metric};
 
 #[async_trait]
 pub trait UserService: Send + Sync {
@@ -55,4 +55,9 @@ pub trait ProgressionService: Send + Sync {
         quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error>;
+}
+
+#[async_trait]
+pub trait StatisticsService: Send + Sync {
+    async fn get_user_metrics(&self, username: &Username) -> Result<Vec<Metric>, Error>;
 }

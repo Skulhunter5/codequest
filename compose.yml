@@ -20,6 +20,8 @@ services:
       - DB_PASSWORD_QUEST_SERVICE=${DB_PASSWORD_QUEST_SERVICE}
       - DB_USERNAME_PROGRESSION_SERVICE=${DB_USERNAME_PROGRESSION_SERVICE}
       - DB_PASSWORD_PROGRESSION_SERVICE=${DB_PASSWORD_PROGRESSION_SERVICE}
+      - DB_USERNAME_STATISTICS_SERVICE=${DB_USERNAME_STATISTICS_SERVICE}
+      - DB_PASSWORD_STATISTICS_SERVICE=${DB_PASSWORD_STATISTICS_SERVICE}
     volumes:
       - ./run/pgdata:/var/lib/postgresql
       - ./db-init:/docker-entrypoint-initdb.d
@@ -60,6 +62,7 @@ services:
       - USER_SERVICE_ADDRESS=http://codequest-user-service:8000/user
       - QUEST_SERVICE_ADDRESS=http://codequest-quest-service:8000/quest
       - PROGRESSION_SERVICE_ADDRESS=http://codequest-progression-service:8000/progression
+      - STATISTICS_SERVICE_ADDRESS=http://codequest-statistics-service:8000/statistics
       - SECRET_KEY_FILE=/run/secrets/secret_key
   user-service:
     image: codequest-user-service
@@ -113,6 +116,22 @@ services:
       - QUEST_SERVICE_ADDRESS=http://codequest-quest-service:8000/quest
       - DB_USERNAME_PROGRESSION_SERVICE=${DB_USERNAME_PROGRESSION_SERVICE}
       - DB_PASSWORD_PROGRESSION_SERVICE=${DB_PASSWORD_PROGRESSION_SERVICE}
+      - SECRET_KEY_FILE=/run/secrets/secret_key
+  statistics-service:
+    image: codequest-statistics-service
+    container_name: codequest-statistics-service
+    depends_on:
+      - postgres
+    networks:
+      - codequest-net
+    secrets:
+      - secret_key
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DB_ADDRESS=codequest-postgres:5432
+      - NATS_ADDRESS=codequest-nats:4222
+      - DB_USERNAME_STATISTICS_SERVICE=${DB_USERNAME_STATISTICS_SERVICE}
+      - DB_PASSWORD_STATISTICS_SERVICE=${DB_PASSWORD_STATISTICS_SERVICE}
       - SECRET_KEY_FILE=/run/secrets/secret_key
 
 networks:

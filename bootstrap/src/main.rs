@@ -63,6 +63,16 @@ async fn main() -> Result<(), Error> {
                     Duration::from_secs(60 * 60 * 24 * 30),
                 )
                 .await?;
+                ensure_stream(
+                    &js,
+                    "PROGRESSION_EVENTS",
+                    vec!["progression.events.*"]
+                        .into_iter()
+                        .map(|s| s.to_owned())
+                        .collect::<Vec<_>>(),
+                    Duration::from_secs(60 * 60 * 24 * 30),
+                )
+                .await?;
 
                 println!("NATS JetStream bootstrap completed");
                 break;
