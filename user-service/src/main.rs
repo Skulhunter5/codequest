@@ -1,13 +1,19 @@
 use std::{env, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Username, load_salt, load_secret_key, services::UserService,
+    Credentials, Error, User, UserId, load_salt, load_secret_key, services::UserService,
 };
 use codequest_user_service::{
-    ChangePasswordData, DatabaseUserService, UserCredentials, UserServiceNatsWrapper,
+    ChangePasswordRequest, CreateUserRequest, DatabaseUserService, LoginRequest,
+    UserServiceNatsWrapper,
 };
 use dotenv::dotenv;
-use rocket::{State, http, routes, serde::json::Json};
+use rocket::{
+    State, http,
+    response::{content::RawJson, status},
+    routes,
+    serde::json::Json,
+};
 
 mod defaults {
     pub const SALT_FILE: &'static str = "./secrets/salt";
@@ -15,59 +21,56 @@ mod defaults {
     pub const PORT: u16 = 8000;
 }
 
-#[rocket::get("/<username>")]
+#[rocket::get("/<user_id>")]
 async fn get_user(
-    username: &str,
+    user_id: UserId,
     user_service: &State<Arc<dyn UserService>>,
-) -> Result<(http::Status, &'static str), Error> {
-    let username = Username::build(username)?;
-    Ok(if user_service.user_exists(&username).await? {
-        (http::Status::Ok, "")
+) -> Result<Result<Json<User>, status::NotFound<RawJson<&'static str>>>, Error> {
+    Ok(if let Some(user) = user_service.get_user(&user_id).await? {
+        Ok(Json(user))
     } else {
-        (http::Status::NotFound, "")
+        Err(status::NotFound(RawJson("")))
     })
 }
 
-#[rocket::post("/", format = "json", data = "<credentials>")]
-async fn add_user(
-    credentials: Json<UserCredentials<'_>>,
+#[rocket::post("/", format = "json", data = "<request_data>")]
+async fn create_user(
+    request_data: Json<CreateUserRequest<'_>>,
     user_service: &State<Arc<dyn UserService>>,
-) -> Result<(http::Status, &'static str), Error> {
-    let username = Username::build(credentials.username)?;
+) -> Result<Result<(http::Status, String), status::Conflict<&'static str>>, Error> {
+    let request_data = request_data.0;
     Ok(
-        if user_service
-            .add_user(username, credentials.password)
+        if let Some(user_id) = user_service
+            .create_user(request_data.username, request_data.password)
             .await?
         {
-            (http::Status::Created, "")
+            Ok((http::Status::Created, user_id.to_string()))
         } else {
-            (http::Status::Conflict, "")
+            Err(status::Conflict(""))
         },
     )
 }
 
-#[rocket::delete("/<username>")]
+#[rocket::delete("/<user_id>")]
 async fn delete_user(
-    username: &str,
+    user_id: UserId,
     user_service: &State<Arc<dyn UserService>>,
-) -> Result<(http::Status, &'static str), Error> {
-    let username = Username::build(username)?;
-    Ok(if user_service.delete_user(&username).await? {
-        (http::Status::NoContent, "")
+) -> Result<Result<status::NoContent, status::NotFound<()>>, Error> {
+    Ok(if user_service.delete_user(&user_id).await? {
+        Ok(status::NoContent)
     } else {
-        (http::Status::NotFound, "")
+        Err(status::NotFound(()))
     })
 }
 
 #[rocket::post("/change-password", format = "json", data = "<request_data>")]
 async fn change_password(
-    request_data: Json<ChangePasswordData<'_>>,
+    request_data: Json<ChangePasswordRequest<'_>>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<String, Error> {
-    let username = Username::build(request_data.username)?;
     user_service
         .change_password(
-            &username,
+            &request_data.user_id,
             request_data.old_password,
             request_data.new_password,
         )
@@ -75,16 +78,20 @@ async fn change_password(
         .map(|password_was_changed| password_was_changed.to_string())
 }
 
-#[rocket::post("/login", format = "json", data = "<credentials>")]
-async fn verify_password(
-    credentials: Json<UserCredentials<'_>>,
+#[rocket::post("/login", format = "json", data = "<request_data>")]
+async fn login(
+    request_data: Json<LoginRequest<'_>>,
     user_service: &State<Arc<dyn UserService>>,
-) -> Result<String, Error> {
-    let username = Username::build(credentials.username)?;
-    user_service
-        .verify_password(&username, credentials.password)
-        .await
-        .map(|res| res.to_string())
+) -> Result<Result<(http::Status, String), status::Unauthorized<&'static str>>, Error> {
+    Ok(
+        match user_service
+            .login(&request_data.username, request_data.password)
+            .await?
+        {
+            Some(user_id) => Ok((http::Status::Ok, user_id.to_string())),
+            None => Err(status::Unauthorized("")),
+        },
+    )
 }
 
 #[rocket::main]
@@ -132,13 +139,7 @@ async fn main() -> Result<(), rocket::Error> {
     rocket::custom(&rocket_config)
         .mount(
             "/user",
-            routes![
-                get_user,
-                add_user,
-                delete_user,
-                change_password,
-                verify_password
-            ],
+            routes![get_user, create_user, delete_user, change_password, login],
         )
         .manage(Arc::new(user_service) as Arc<dyn UserService>)
         .launch()

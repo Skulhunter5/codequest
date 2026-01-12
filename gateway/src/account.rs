@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use codequest_common::{Error, Username, services::UserService};
+use codequest_common::{Error, User, UserId, Username, services::UserService};
 use rocket::{
     FromForm, Request, State, async_trait,
     form::Form,
@@ -13,7 +13,17 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct AuthUser {
+    pub(crate) id: UserId,
     pub(crate) username: Username,
+}
+
+impl AuthUser {
+    pub fn from_user(user: User) -> Self {
+        Self {
+            id: user.id,
+            username: user.username,
+        }
+    }
 }
 
 #[async_trait]
@@ -23,28 +33,26 @@ impl<'r> FromRequest<'r> for AuthUser {
         let jar = request.cookies();
 
         if let Some(cookie) = jar.get_private("user_id") {
-            let username = match Username::build(cookie.value().to_owned()) {
-                Ok(username) => username,
-                Err(e) => return Outcome::Error((http::Status::BadRequest, e)),
+            let user_id = match UserId::try_parse(cookie.value()) {
+                Ok(user_id) => user_id,
+                Err(e) => return Outcome::Error((http::Status::Unauthorized, e)),
             };
 
             let user_service = request
                 .guard::<&State<Arc<dyn UserService>>>()
                 .await
                 .expect("UserService not registered with rocket");
-            match user_service.user_exists(&username).await {
-                Ok(res) => {
-                    if res {
-                        return Outcome::Success(AuthUser { username });
-                    } else {
-                        jar.remove_private("user_id");
-                    }
+            match user_service.get_user(&user_id).await {
+                Ok(Some(user)) => Outcome::Success(AuthUser::from_user(user)),
+                Ok(None) => {
+                    jar.remove_private("user_id");
+                    Outcome::Error((http::Status::Unauthorized, Error::Unauthorized))
                 }
-                Err(e) => return Outcome::Error((http::Status::InternalServerError, e)),
+                Err(e) => Outcome::Error((http::Status::InternalServerError, e)),
             }
+        } else {
+            Outcome::Error((http::Status::Unauthorized, Error::Unauthorized))
         }
-
-        Outcome::Error((http::Status::Unauthorized, Error::Unauthorized))
     }
 }
 
@@ -94,11 +102,11 @@ pub async fn signup(
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<(http::Status, Json<SignupResponse>), Error> {
     let SignupForm { username, password } = *form;
-    let username = Username::build(username)?;
+    let username = Username::new(username)?;
 
     Ok(
-        if user_service.add_user(username.clone(), password).await? {
-            jar.add_private(Cookie::new("user_id", username.to_string()));
+        if let Some(user_id) = user_service.create_user(username, password).await? {
+            jar.add_private(Cookie::new("user_id", user_id.to_string()));
             (
                 http::Status::Ok,
                 Json(SignupResponse::success("/".to_owned())),
@@ -152,11 +160,11 @@ pub async fn login(
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<(http::Status, Json<LoginResponse>), Error> {
     let LoginForm { username, password } = *form;
-    let username = Username::build(username)?;
+    let username = Username::new(username)?;
 
     Ok(
-        if user_service.verify_password(&username, password).await? {
-            jar.add_private(Cookie::new("user_id", username.to_string()));
+        if let Some(user_id) = user_service.login(&username, password).await? {
+            jar.add_private(Cookie::new("user_id", user_id.to_string()));
             (
                 http::Status::Ok,
                 Json(LoginResponse::success("/".to_owned())),
@@ -211,7 +219,7 @@ pub async fn change_password(
 ) -> Result<(http::Status, Json<ChangePasswordResponse>), Error> {
     Ok(
         if user_service
-            .change_password(&user.username, form.current_password, form.new_password)
+            .change_password(&user.id, form.current_password, form.new_password)
             .await?
         {
             (http::Status::Ok, Json(ChangePasswordResponse::success()))
@@ -230,7 +238,7 @@ pub async fn delete(
     jar: &CookieJar<'_>,
     user_service: &State<Arc<dyn UserService>>,
 ) -> Result<Redirect, Error> {
-    if user_service.delete_user(&user.username).await? {
+    if user_service.delete_user(&user.id).await? {
         jar.remove_private("user_id");
     }
     Ok(Redirect::to("/"))

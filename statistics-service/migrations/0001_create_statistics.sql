@@ -1,6 +1,6 @@
 CREATE TABLE statistics (
-    username      TEXT NOT NULL,
+    user_id       UUID NOT NULL,
     metric_key    TEXT NOT NULL,
     metric_value  BIGINT NOT NULL,
-    PRIMARY KEY (username, metric_key)
+    PRIMARY KEY (user_id, metric_key)
 );

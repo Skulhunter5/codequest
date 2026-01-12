@@ -1,6 +1,8 @@
 use std::{io, path::Path, sync::Arc};
 
-use codequest_common::{Credentials, Error, Quest, QuestId, QuestItem, services::QuestService};
+use codequest_common::{
+    Credentials, Error, Quest, QuestId, QuestItem, UserId, services::QuestService,
+};
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -69,17 +71,21 @@ impl QuestService for ConstQuestService {
             .is_some())
     }
 
-    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
         Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
-            &quest_id, &username
+            &quest_id, &user_id
         )))
     }
 
     async fn get_answer(
         &self,
         quest_id: &QuestId,
-        _username: &str,
+        _user_id: &UserId,
     ) -> Result<Option<String>, Error> {
         Ok(if self.quest_exists(&quest_id).await? {
             Some(quest_id.to_string())
@@ -121,17 +127,21 @@ impl QuestService for FileQuestService {
             .cloned())
     }
 
-    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
         Ok(Some(format!(
             "[WIP] Input for quest '{}' for user '{}'",
-            &quest_id, &username
+            &quest_id, &user_id
         )))
     }
 
     async fn get_answer(
         &self,
         quest_id: &QuestId,
-        _username: &str,
+        _user_id: &UserId,
     ) -> Result<Option<String>, Error> {
         Ok(if self.quest_exists(&quest_id).await? {
             Some(quest_id.to_string())
@@ -206,16 +216,20 @@ impl QuestService for DatabaseQuestService {
         )
     }
 
-    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
-        self.context_provider.get_input(quest_id, username).await
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
+        self.context_provider.get_input(quest_id, user_id).await
     }
 
     async fn get_answer(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
     ) -> Result<Option<String>, Error> {
-        self.context_provider.get_answer(quest_id, username).await
+        self.context_provider.get_answer(quest_id, user_id).await
     }
 }
 
@@ -268,10 +282,14 @@ impl QuestService for BackendQuestService {
         }
     }
 
-    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
         let response = self
             .client
-            .get(format!("{}/{}/input/{}", &self.address, quest_id, username))
+            .get(format!("{}/{}/input/{}", &self.address, quest_id, user_id))
             .send()
             .await
             .map_err(|_| Error::ServerUnreachable)?;
@@ -289,14 +307,11 @@ impl QuestService for BackendQuestService {
     async fn get_answer(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
     ) -> Result<Option<String>, Error> {
         let response = self
             .client
-            .get(format!(
-                "{}/{}/answer/{}",
-                &self.address, quest_id, username
-            ))
+            .get(format!("{}/{}/answer/{}", &self.address, quest_id, user_id))
             .send()
             .await
             .map_err(|_| Error::ServerUnreachable)?;
@@ -314,15 +329,12 @@ impl QuestService for BackendQuestService {
     async fn verify_answer(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         let response = self
             .client
-            .post(format!(
-                "{}/{}/answer/{}",
-                &self.address, quest_id, username
-            ))
+            .post(format!("{}/{}/answer/{}", &self.address, quest_id, user_id))
             .body(answer.to_owned())
             .send()
             .await

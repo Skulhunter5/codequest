@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Username, load_secret_key, services::StatisticsService, statistics::Metric,
+    Credentials, Error, UserId, load_secret_key, services::StatisticsService, statistics::Metric,
 };
 use codequest_statistics_service::DatabaseStatisticsService;
 use dotenv::dotenv;
@@ -12,14 +12,13 @@ mod defaults {
     pub const PORT: u16 = 8000;
 }
 
-#[rocket::get("/<username>")]
+#[rocket::get("/<user_id>")]
 async fn user_metrics(
-    username: &str,
+    user_id: UserId,
     statistics_service: &State<Arc<dyn StatisticsService>>,
 ) -> Result<Json<Vec<Metric>>, Error> {
-    let username = Username::build(username)?;
     statistics_service
-        .get_user_metrics(&username)
+        .get_user_metrics(&user_id)
         .await
         .map(|metrics| Json(metrics))
 }

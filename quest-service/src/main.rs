@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Quest, QuestId, QuestItem, load_secret_key, services::QuestService,
+    Credentials, Error, Quest, QuestId, QuestItem, UserId, load_secret_key, services::QuestService,
 };
 use codequest_quest_service::{
     DatabaseQuestService,
@@ -42,39 +42,39 @@ async fn get_quest(
         .ok_or(status::NotFound(RawJson(""))))
 }
 
-#[rocket::get("/<quest_id>/input/<username>")]
+#[rocket::get("/<quest_id>/input/<user_id>")]
 async fn get_input(
     quest_id: QuestId,
-    username: &str,
+    user_id: UserId,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(quest_service
-        .get_input(&quest_id, username)
+        .get_input(&quest_id, &user_id)
         .await?
         .ok_or(status::NotFound(RawText(""))))
 }
 
-#[rocket::get("/<quest_id>/answer/<username>")]
+#[rocket::get("/<quest_id>/answer/<user_id>")]
 async fn get_answer(
     quest_id: QuestId,
-    username: &str,
+    user_id: UserId,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(quest_service
-        .get_answer(&quest_id, username)
+        .get_answer(&quest_id, &user_id)
         .await?
         .ok_or(status::NotFound(RawText(""))))
 }
 
-#[rocket::post("/<quest_id>/answer/<username>", data = "<answer>")]
+#[rocket::post("/<quest_id>/answer/<user_id>", data = "<answer>")]
 async fn verify_answer(
     quest_id: QuestId,
-    username: &str,
+    user_id: UserId,
     answer: &str,
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(quest_service
-        .verify_answer(&quest_id, username, answer)
+        .verify_answer(&quest_id, &user_id, answer)
         .await?
         .map(|answer_was_correct| answer_was_correct.to_string())
         .ok_or(status::NotFound(RawText(""))))

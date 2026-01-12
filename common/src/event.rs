@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{QuestId, Username};
+use crate::{QuestId, UserId};
 
 pub trait Event: Serialize + DeserializeOwned {
     fn get_subject(&self) -> &'static str;
@@ -8,8 +8,8 @@ pub trait Event: Serialize + DeserializeOwned {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserEvent {
-    Created(Username),
-    Deleted(Username),
+    Created(UserId),
+    Deleted(UserId),
 }
 
 impl Event for UserEvent {
@@ -23,14 +23,8 @@ impl Event for UserEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProgressionEvent {
-    AnswerSubmitted {
-        username: Username,
-        correct: bool,
-    },
-    QuestCompleted {
-        username: Username,
-        quest_id: QuestId,
-    },
+    AnswerSubmitted { user_id: UserId, correct: bool },
+    QuestCompleted { user_id: UserId, quest_id: QuestId },
 }
 
 impl Event for ProgressionEvent {

@@ -1,19 +1,25 @@
 use rocket::async_trait;
 
-use crate::{Error, Quest, QuestId, QuestItem, Username, statistics::Metric};
+use crate::{Error, Quest, QuestId, QuestItem, User, UserId, Username, statistics::Metric};
 
 #[async_trait]
 pub trait UserService: Send + Sync {
-    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error>;
-    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error>;
-    async fn delete_user(&self, username: &Username) -> Result<bool, Error>;
+    async fn get_user(&self, id: &UserId) -> Result<Option<User>, Error>;
+    async fn login(&self, username: &Username, password: &str) -> Result<Option<UserId>, Error>;
+    async fn create_user(
+        &self,
+        username: Username,
+        password: &str,
+    ) -> Result<Option<UserId>, Error>;
+    async fn delete_user(&self, id: &UserId) -> Result<bool, Error>;
+    async fn user_exists(&self, id: &UserId) -> Result<bool, Error>;
+
     async fn change_password(
         &self,
-        username: &Username,
+        id: &UserId,
         old_password: &str,
         new_password: &str,
     ) -> Result<bool, Error>;
-    async fn user_exists(&self, username: &Username) -> Result<bool, Error>;
 }
 
 #[async_trait]
@@ -25,18 +31,25 @@ pub trait QuestService: Send + Sync {
         Ok(self.get_quest(&id).await?.is_some())
     }
 
-    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error>;
-    async fn get_answer(&self, quest_id: &QuestId, username: &str)
-    -> Result<Option<String>, Error>;
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error>;
+    async fn get_answer(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error>;
 
     async fn verify_answer(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         Ok(self
-            .get_answer(&quest_id, &username)
+            .get_answer(quest_id, user_id)
             .await?
             .map(|correct_answer| answer == correct_answer))
     }
@@ -46,12 +59,12 @@ pub trait QuestService: Send + Sync {
 pub trait ProgressionService: Send + Sync {
     async fn has_user_completed_quest(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
     ) -> Result<bool, Error>;
     async fn submit_answer(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error>;
@@ -59,5 +72,5 @@ pub trait ProgressionService: Send + Sync {
 
 #[async_trait]
 pub trait StatisticsService: Send + Sync {
-    async fn get_user_metrics(&self, username: &Username) -> Result<Vec<Metric>, Error>;
+    async fn get_user_metrics(&self, user_id: &UserId) -> Result<Vec<Metric>, Error>;
 }

@@ -2,7 +2,7 @@ use std::process::ExitStatus;
 
 use rocket::{Response, http, response::Responder};
 
-use crate::QuestId;
+use crate::{QuestId, UserId};
 
 #[derive(Debug)]
 pub enum Error {
@@ -18,9 +18,10 @@ pub enum Error {
     Json(serde_json::Error),
     QuestContextGeneratorFailed {
         quest: QuestId,
-        username: String,
+        user: UserId,
         exit_status: ExitStatus,
     },
+    InvalidUuid(uuid::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -71,6 +72,12 @@ impl From<async_nats::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
+    }
+}
+
+impl From<uuid::Error> for Error {
+    fn from(error: uuid::Error) -> Self {
+        Self::InvalidUuid(error)
     }
 }
 

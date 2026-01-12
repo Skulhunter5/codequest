@@ -20,7 +20,7 @@ struct PageContext<'a, MainContext: Serialize> {
 impl<'a> PageContext<'a, ()> {
     fn simple(user: &'a Option<AuthUser>) -> Self {
         Self {
-            user: if let Some(AuthUser { username }) = &user {
+            user: if let Some(AuthUser { username, .. }) = &user {
                 Some(username.as_str())
             } else {
                 None
@@ -33,7 +33,7 @@ impl<'a> PageContext<'a, ()> {
 impl<'a, MainContext: Serialize> PageContext<'a, MainContext> {
     fn new(user: &'a Option<AuthUser>, content: MainContext) -> Self {
         Self {
-            user: if let Some(AuthUser { username }) = &user {
+            user: if let Some(AuthUser { username, .. }) = &user {
                 Some(username.as_str())
             } else {
                 None
@@ -128,11 +128,11 @@ pub async fn quest(
             Ok(
                 if let Some(present_user) = &user
                     && progression_service
-                        .has_user_completed_quest(present_user.username.as_str(), &quest_id)
+                        .has_user_completed_quest(&present_user.id, &quest_id)
                         .await?
                 {
                     let quest_answer = quest_service
-                        .get_answer(&quest_id, present_user.username.as_str())
+                        .get_answer(&quest_id, &present_user.id)
                         .await?
                         .ok_or(Error::IncoherentState)?;
                     Template::render(
@@ -178,10 +178,7 @@ pub async fn quest_input(
     quest_service: &State<Arc<dyn QuestService>>,
 ) -> Result<String, http::Status> {
     if let Some(user) = user {
-        match quest_service
-            .get_input(&quest_id, user.username.as_str())
-            .await
-        {
+        match quest_service.get_input(&quest_id, &user.id).await {
             Ok(Some(input)) => Ok(input),
             Ok(None) => Err(http::Status::NotFound),
             Err(_) => Err(http::Status::InternalServerError),
@@ -210,7 +207,7 @@ pub async fn quest_answer(
     };
     Ok(if let Some(user) = user {
         match progression_service
-            .submit_answer(user.username.as_str(), &quest_id, &form.answer)
+            .submit_answer(&user.id, &quest_id, &form.answer)
             .await?
         {
             Some(answer_was_correct) => Ok(Template::render(
@@ -246,7 +243,7 @@ pub async fn account_statistics(
     user: AuthUser,
     statistics_service: &State<Arc<dyn StatisticsService>>,
 ) -> Result<Template, Error> {
-    let metrics = statistics_service.get_user_metrics(&user.username).await?;
+    let metrics = statistics_service.get_user_metrics(&user.id).await?;
     let statistics = metrics
         .into_iter()
         .map(|metric| {

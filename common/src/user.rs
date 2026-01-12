@@ -3,6 +3,18 @@ use uuid::Uuid;
 
 use crate::Error;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow)]
+pub struct User {
+    pub id: UserId,
+    pub username: Username,
+}
+
+impl User {
+    pub fn build(id: UserId, username: Username) -> Self {
+        Self { id, username }
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow, sqlx::Type,
 )]
@@ -11,6 +23,10 @@ use crate::Error;
 pub struct UserId(Uuid);
 
 impl UserId {
+    pub fn try_parse(input: impl AsRef<str>) -> Result<Self, Error> {
+        Ok(Self(Uuid::try_parse(input.as_ref())?))
+    }
+
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
@@ -30,7 +46,7 @@ impl<'r> rocket::request::FromParam<'r> for UserId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, sqlx::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(transparent)]
 #[repr(transparent)]
 pub struct Username(String);
@@ -46,7 +62,7 @@ impl Username {
         c.is_ascii_alphanumeric() || c == '_' || c == '-'
     }
 
-    pub fn build(value: impl Into<String>) -> Result<Self, Error> {
+    pub fn new(value: impl Into<String>) -> Result<Self, Error> {
         let value = value.into();
         if !Self::is_valid(&value) {
             return Err(Error::InvalidUsername(value));
@@ -69,13 +85,9 @@ impl AsRef<str> for Username {
     }
 }
 
-impl<'de> Deserialize<'de> for Username {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Self::build(value).map_err(serde::de::Error::custom)
+impl Into<String> for Username {
+    fn into(self) -> String {
+        self.0
     }
 }
 
@@ -126,17 +138,5 @@ impl<'de> Deserialize<'de> for UsernameRef<'de> {
 impl std::fmt::Display for UsernameRef<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::FromRow)]
-pub struct User {
-    id: UserId,
-    username: Username,
-}
-
-impl User {
-    pub fn new(id: UserId, username: Username) -> Self {
-        Self { id, username }
     }
 }

@@ -8,7 +8,8 @@ use std::{
 
 use argon2::{Argon2, PasswordHasher, password_hash::SaltString};
 use codequest_common::{
-    Credentials, Error, Username, event::UserEvent, nats::NatsClient, services::UserService,
+    Credentials, Error, User, UserId, Username, event::UserEvent, nats::NatsClient,
+    services::UserService,
 };
 use reqwest::{Client, StatusCode};
 use rocket::{
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub struct InMemoryUserService {
-    users: RwLock<HashMap<Username, String>>,
+    users: RwLock<HashMap<UserId, (Username, String)>>,
     salt: SaltString,
 }
 
@@ -32,7 +33,7 @@ impl InMemoryUserService {
         }
     }
 
-    pub fn with(salt: SaltString, users: HashMap<Username, String>) -> Self {
+    pub fn with(salt: SaltString, users: HashMap<UserId, (Username, String)>) -> Self {
         Self {
             users: RwLock::new(users),
             salt,
@@ -49,47 +50,63 @@ impl InMemoryUserService {
 
 #[async_trait]
 impl UserService for InMemoryUserService {
-    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
-        Ok(
-            if let Some(correct_hash) = self.users.read().await.get(username) {
-                let hash = self.hash_password(password);
-                hash == *correct_hash
-            } else {
-                false
-            },
-        )
+    async fn get_user(&self, id: &UserId) -> Result<Option<User>, Error> {
+        Ok(self
+            .users
+            .read()
+            .await
+            .get(id)
+            .map(|(username, _)| User::build(id.clone(), username.clone())))
     }
 
-    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
-        if self.users.read().await.contains_key(&username) {
-            return Ok(false);
-        }
+    async fn login(&self, username: &Username, password: &str) -> Result<Option<UserId>, Error> {
+        let hash = self.hash_password(password);
+        Ok(self
+            .users
+            .read()
+            .await
+            .iter()
+            .find(|(_, (correct_username, correct_hash))| {
+                correct_username == username && hash == *correct_hash
+            })
+            .map(|(id, _)| id.clone()))
+    }
 
+    async fn create_user(
+        &self,
+        username: Username,
+        password: &str,
+    ) -> Result<Option<UserId>, Error> {
         let users = self.users.write().await;
-        if users.contains_key(&username) {
-            return Ok(false);
+        if users
+            .values()
+            .find(|(used_username, _)| username == *used_username)
+            .is_some()
+        {
+            return Ok(None);
         }
 
         let hash = self.hash_password(password);
-        let previous_value = self.users.write().await.insert(username.into(), hash);
+        let id = UserId::new();
+        let previous_value = self.users.write().await.insert(id, (username, hash));
         assert!(previous_value.is_none());
-        return Ok(true);
+        return Ok(Some(id));
     }
 
-    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
-        if !self.users.read().await.contains_key(username) {
+    async fn delete_user(&self, id: &UserId) -> Result<bool, Error> {
+        if !self.users.read().await.contains_key(id) {
             return Ok(false);
         }
-        Ok(self.users.write().await.remove(username).is_some())
+        Ok(self.users.write().await.remove(id).is_some())
     }
 
     async fn change_password(
         &self,
-        username: &Username,
+        id: &UserId,
         old_password: &str,
         new_password: &str,
     ) -> Result<bool, Error> {
-        if self.users.read().await.contains_key(&username) {
+        if self.users.read().await.contains_key(id) {
             return Ok(false);
         }
 
@@ -97,19 +114,20 @@ impl UserService for InMemoryUserService {
         let new_hash = self.hash_password(new_password);
 
         let mut users = self.users.write().await;
-        let Some(hash) = users.get(&username) else {
-            return Ok(false);
-        };
-        if old_hash != *hash {
-            return Ok(false);
-        }
-        users.insert(username.clone(), new_hash);
-
-        return Ok(true);
+        Ok(if let Some((_, hash)) = users.get_mut(id) {
+            if old_hash == *hash {
+                *hash = new_hash;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        })
     }
 
-    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
-        Ok(self.users.read().await.contains_key(username))
+    async fn user_exists(&self, id: &UserId) -> Result<bool, Error> {
+        Ok(self.users.read().await.contains_key(id))
     }
 }
 
@@ -166,27 +184,33 @@ impl FileUserService {
 
 #[async_trait]
 impl UserService for FileUserService {
-    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
-        self.in_memory_user_service
-            .verify_password(username, password)
-            .await
+    async fn get_user(&self, id: &UserId) -> Result<Option<User>, Error> {
+        self.in_memory_user_service.get_user(id).await
     }
 
-    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
-        let created = self
+    async fn login(&self, username: &Username, password: &str) -> Result<Option<UserId>, Error> {
+        self.in_memory_user_service.login(username, password).await
+    }
+
+    async fn create_user(
+        &self,
+        username: Username,
+        password: &str,
+    ) -> Result<Option<UserId>, Error> {
+        let id = self
             .in_memory_user_service
-            .add_user(username, password)
+            .create_user(username, password)
             .await?;
-        if created {
+        if id.is_some() {
             if let Err(e) = self.save().await {
                 eprintln!("FileUserService: failed to write users to file: {}", e);
             }
         }
-        return Ok(created);
+        return Ok(id);
     }
 
-    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
-        let deleted = self.in_memory_user_service.delete_user(username).await?;
+    async fn delete_user(&self, id: &UserId) -> Result<bool, Error> {
+        let deleted = self.in_memory_user_service.delete_user(id).await?;
         if deleted {
             if let Err(e) = self.save().await {
                 eprintln!("FileUserService: failed to write users to file: {}", e);
@@ -197,13 +221,13 @@ impl UserService for FileUserService {
 
     async fn change_password(
         &self,
-        username: &Username,
+        id: &UserId,
         old_password: &str,
         new_password: &str,
     ) -> Result<bool, Error> {
         let password_was_changed = self
             .in_memory_user_service
-            .change_password(username, old_password, new_password)
+            .change_password(id, old_password, new_password)
             .await?;
 
         if password_was_changed {
@@ -213,8 +237,8 @@ impl UserService for FileUserService {
         return Ok(password_was_changed);
     }
 
-    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
-        self.in_memory_user_service.user_exists(username).await
+    async fn user_exists(&self, id: &UserId) -> Result<bool, Error> {
+        self.in_memory_user_service.user_exists(id).await
     }
 }
 
@@ -259,36 +283,51 @@ impl DatabaseUserService {
 
 #[async_trait]
 impl UserService for DatabaseUserService {
-    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
+    async fn get_user(&self, id: &UserId) -> Result<Option<User>, Error> {
+        Ok(
+            sqlx::query_as::<_, User>("SELECT id, username FROM users WHERE (id = $1)")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
+    }
+
+    async fn login(&self, username: &Username, password: &str) -> Result<Option<UserId>, Error> {
         let password_hash = self.hash_password(password);
-        Ok(sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE (username = $1 AND password_hash = $2))",
+        Ok(sqlx::query_scalar::<_, UserId>(
+            "SELECT id FROM users WHERE (username = $1 AND password_hash = $2)",
+        )
+        .bind(username)
+        .bind(&password_hash)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    async fn create_user(
+        &self,
+        username: Username,
+        password: &str,
+    ) -> Result<Option<UserId>, Error> {
+        let password_hash = self.hash_password(password);
+        match sqlx::query_scalar::<_, UserId>(
+            "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id",
         )
         .bind(username)
         .bind(&password_hash)
         .fetch_one(&self.pool)
-        .await?)
-    }
-
-    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
-        let password_hash = self.hash_password(password);
-        match sqlx::query("INSERT INTO users (username, password_hash) VALUES ($1, $2)")
-            .bind(username)
-            .bind(&password_hash)
-            .execute(&self.pool)
-            .await
+        .await
         {
-            Ok(_) => Ok(true),
+            Ok(id) => Ok(Some(id)),
             Err(sqlx::Error::Database(db_error)) if db_error.constraint() == Some("users_pkey") => {
-                Ok(false)
+                Ok(None)
             }
             Err(e) => Err(e.into()),
         }
     }
 
-    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
-        let res = sqlx::query("DELETE FROM users WHERE (username = $1)")
-            .bind(username)
+    async fn delete_user(&self, id: &UserId) -> Result<bool, Error> {
+        let res = sqlx::query("DELETE FROM users WHERE (id = $1)")
+            .bind(id)
             .execute(&self.pool)
             .await?;
 
@@ -296,7 +335,7 @@ impl UserService for DatabaseUserService {
             0 => Ok(false),
             1 => Ok(true),
             x => unreachable!(
-                "SQL 'DELETE FROM users' query is constrained by primary key (username) but multiple rows ({}) were affected",
+                "SQL 'DELETE FROM users' query is constrained by primary key (user_id) but multiple rows ({}) were affected",
                 x
             ),
         }
@@ -304,7 +343,7 @@ impl UserService for DatabaseUserService {
 
     async fn change_password(
         &self,
-        username: &Username,
+        id: &UserId,
         old_password: &str,
         new_password: &str,
     ) -> Result<bool, Error> {
@@ -312,10 +351,10 @@ impl UserService for DatabaseUserService {
         let new_hash = self.hash_password(new_password);
 
         let res = sqlx::query(
-            "UPDATE users SET password_hash = $1 WHERE (username = $2 AND password_hash = $3)",
+            "UPDATE users SET password_hash = $1 WHERE (id = $2 AND password_hash = $3)",
         )
         .bind(new_hash)
-        .bind(username)
+        .bind(id)
         .bind(old_hash)
         .execute(&self.pool)
         .await?;
@@ -329,10 +368,10 @@ impl UserService for DatabaseUserService {
         }
     }
 
-    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
+    async fn user_exists(&self, id: &UserId) -> Result<bool, Error> {
         Ok(
-            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
-                .bind(username)
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE (id = $1))")
+                .bind(id)
                 .fetch_one(&self.pool)
                 .await?,
         )
@@ -353,24 +392,44 @@ impl BackendUserService {
     }
 }
 
+// TODO: change this to UsernameRef and adjust UsernameRef's validation
 #[derive(Serialize, Deserialize)]
-pub struct UserCredentials<'a> {
-    pub username: &'a str,
+pub struct LoginRequest<'a> {
+    pub username: Username,
     pub password: &'a str,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ChangePasswordData<'a> {
-    pub username: &'a str,
+pub struct CreateUserRequest<'a> {
+    pub username: Username,
+    pub password: &'a str,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ChangePasswordRequest<'a> {
+    pub user_id: UserId,
     pub old_password: &'a str,
     pub new_password: &'a str,
 }
 
 #[async_trait]
 impl UserService for BackendUserService {
-    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
-        let credentials = UserCredentials {
-            username: username.as_str(),
+    async fn get_user(&self, id: &UserId) -> Result<Option<User>, Error> {
+        let response = self
+            .client
+            .get(format!("{}/{}", &self.address, id))
+            .send()
+            .await?;
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn login(&self, username: &Username, password: &str) -> Result<Option<UserId>, Error> {
+        let credentials = LoginRequest {
+            username: username.clone(),
             password,
         };
         let response = self
@@ -380,37 +439,35 @@ impl UserService for BackendUserService {
             .send()
             .await?;
         match response.status() {
-            StatusCode::OK => response
-                .text()
-                .await?
-                .parse::<bool>()
-                .map_err(|_| Error::InvalidResponse),
+            StatusCode::OK => Ok(Some(UserId::try_parse(response.text().await?)?)),
+            StatusCode::UNAUTHORIZED => Ok(None),
             _ => Err(Error::InvalidResponse),
         }
     }
 
-    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
-        let credentials = UserCredentials {
-            username: username.as_str(),
-            password,
-        };
+    async fn create_user(
+        &self,
+        username: Username,
+        password: &str,
+    ) -> Result<Option<UserId>, Error> {
+        let request_data = CreateUserRequest { username, password };
         let response = self
             .client
             .post(&self.address)
-            .json(&credentials)
+            .json(&request_data)
             .send()
             .await?;
         match response.status() {
-            StatusCode::CREATED => Ok(true),
-            StatusCode::CONFLICT => Ok(false),
+            StatusCode::CREATED => Ok(Some(UserId::try_parse(response.text().await?)?)),
+            StatusCode::CONFLICT => Ok(None),
             _ => Err(Error::InvalidResponse),
         }
     }
 
-    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
+    async fn delete_user(&self, id: &UserId) -> Result<bool, Error> {
         let response = self
             .client
-            .delete(format!("{}/{}", &self.address, username))
+            .delete(format!("{}/{}", &self.address, id))
             .send()
             .await?;
         match response.status() {
@@ -422,12 +479,12 @@ impl UserService for BackendUserService {
 
     async fn change_password(
         &self,
-        username: &Username,
+        id: &UserId,
         old_password: &str,
         new_password: &str,
     ) -> Result<bool, Error> {
-        let request_data = ChangePasswordData {
-            username: username.as_str(),
+        let request_data = ChangePasswordRequest {
+            user_id: id.clone(),
             old_password,
             new_password,
         };
@@ -447,17 +504,8 @@ impl UserService for BackendUserService {
         }
     }
 
-    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
-        let response = self
-            .client
-            .get(format!("{}/{}", &self.address, username))
-            .send()
-            .await?;
-        match response.status() {
-            StatusCode::OK => Ok(true),
-            StatusCode::NOT_FOUND => Ok(false),
-            _ => Err(Error::InvalidResponse),
-        }
+    async fn user_exists(&self, id: &UserId) -> Result<bool, Error> {
+        Ok(self.get_user(id).await?.is_some())
     }
 }
 
@@ -481,25 +529,33 @@ impl UserServiceNatsWrapper {
 
 #[async_trait]
 impl UserService for UserServiceNatsWrapper {
-    async fn verify_password(&self, username: &Username, password: &str) -> Result<bool, Error> {
-        self.user_service.verify_password(username, password).await
+    async fn get_user(&self, id: &UserId) -> Result<Option<User>, Error> {
+        self.user_service.get_user(id).await
     }
 
-    async fn add_user(&self, username: Username, password: &str) -> Result<bool, Error> {
-        let res = self.user_service.add_user(username.clone(), password).await;
+    async fn login(&self, username: &Username, password: &str) -> Result<Option<UserId>, Error> {
+        self.user_service.login(username, password).await
+    }
+
+    async fn create_user(
+        &self,
+        username: Username,
+        password: &str,
+    ) -> Result<Option<UserId>, Error> {
+        let res = self.user_service.create_user(username, password).await;
         match res {
-            Ok(true) => self.nats_client.emit(UserEvent::Created(username)).await?,
+            Ok(Some(id)) => self.nats_client.emit(UserEvent::Created(id)).await?,
             _ => (),
         }
         return res;
     }
 
-    async fn delete_user(&self, username: &Username) -> Result<bool, Error> {
-        let res = self.user_service.delete_user(username).await;
+    async fn delete_user(&self, id: &UserId) -> Result<bool, Error> {
+        let res = self.user_service.delete_user(id).await;
         match res {
             Ok(true) => {
                 self.nats_client
-                    .emit(UserEvent::Deleted(username.clone()))
+                    .emit(UserEvent::Deleted(id.clone()))
                     .await?
             }
             _ => (),
@@ -509,16 +565,16 @@ impl UserService for UserServiceNatsWrapper {
 
     async fn change_password(
         &self,
-        username: &Username,
+        id: &UserId,
         old_password: &str,
         new_password: &str,
     ) -> Result<bool, Error> {
         self.user_service
-            .change_password(username, old_password, new_password)
+            .change_password(id, old_password, new_password)
             .await
     }
 
-    async fn user_exists(&self, username: &Username) -> Result<bool, Error> {
-        self.user_service.user_exists(username).await
+    async fn user_exists(&self, id: &UserId) -> Result<bool, Error> {
+        self.user_service.user_exists(id).await
     }
 }

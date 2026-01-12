@@ -7,7 +7,7 @@ use std::{
 };
 
 use codequest_common::{
-    Credentials, Error, QuestId, Username,
+    Credentials, Error, QuestId, UserId,
     event::{ProgressionEvent, UserEvent},
     nats::NatsClient,
     services::{ProgressionService, QuestService},
@@ -21,7 +21,7 @@ use rocket::{
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub struct InMemoryProgressionService {
-    user_progress: RwLock<HashMap<String, Vec<QuestId>>>,
+    user_progress: RwLock<HashMap<UserId, Vec<QuestId>>>,
     quest_service: Arc<dyn QuestService>,
 }
 
@@ -35,7 +35,7 @@ impl InMemoryProgressionService {
     }
 
     pub fn with(
-        user_progress: HashMap<String, Vec<QuestId>>,
+        user_progress: HashMap<UserId, Vec<QuestId>>,
         quest_service: Arc<dyn QuestService>,
     ) -> Self {
         Self {
@@ -49,11 +49,11 @@ impl InMemoryProgressionService {
 impl ProgressionService for InMemoryProgressionService {
     async fn has_user_completed_quest(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
     ) -> Result<bool, Error> {
         let users = self.user_progress.read().await;
-        Ok(if let Some(completed_quests) = users.get(username) {
+        Ok(if let Some(completed_quests) = users.get(user_id) {
             completed_quests
                 .iter()
                 .find(|quest| *quest == quest_id)
@@ -65,23 +65,23 @@ impl ProgressionService for InMemoryProgressionService {
 
     async fn submit_answer(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
-        if self.has_user_completed_quest(username, quest_id).await? {
+        if self.has_user_completed_quest(user_id, quest_id).await? {
             return Ok(None);
         }
         let res = self
             .quest_service
-            .verify_answer(quest_id, username, answer)
+            .verify_answer(quest_id, user_id, answer)
             .await?;
         if Some(true) == res {
             let mut user_progress = self.user_progress.write().await;
-            if let Some(completed_quests) = user_progress.get_mut(username) {
+            if let Some(completed_quests) = user_progress.get_mut(user_id) {
                 completed_quests.push(quest_id.clone());
             } else {
-                user_progress.insert(username.to_owned(), vec![quest_id.to_owned()]);
+                user_progress.insert(user_id.to_owned(), vec![quest_id.to_owned()]);
             }
         }
 
@@ -147,23 +147,23 @@ impl FileProgressionService {
 impl ProgressionService for FileProgressionService {
     async fn has_user_completed_quest(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
     ) -> Result<bool, Error> {
         self.in_memory_progression_service
-            .has_user_completed_quest(username, quest_id)
+            .has_user_completed_quest(user_id, quest_id)
             .await
     }
 
     async fn submit_answer(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         let res = self
             .in_memory_progression_service
-            .submit_answer(username, quest_id, answer)
+            .submit_answer(user_id, quest_id, answer)
             .await?;
         if Some(true) == res {
             if let Err(e) = self.save().await {
@@ -216,10 +216,10 @@ impl DatabaseProgressionService {
                     "progression-service".to_owned(),
                     async move |event| {
                         match event {
-                            UserEvent::Deleted(username) => {
+                            UserEvent::Deleted(user_id) => {
                                 let _query_result =
-                                    sqlx::query("DELETE FROM progression WHERE (username = $1)")
-                                        .bind(&username)
+                                    sqlx::query("DELETE FROM progression WHERE (user_id = $1)")
+                                        .bind(&user_id)
                                         .execute(&pool)
                                         .await?;
                             }
@@ -245,14 +245,14 @@ impl DatabaseProgressionService {
 impl ProgressionService for DatabaseProgressionService {
     async fn has_user_completed_quest(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
     ) -> Result<bool, Error> {
         Ok(sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM progression WHERE (quest_id = $1 AND username = $2))",
+            "SELECT EXISTS(SELECT 1 FROM progression WHERE (quest_id = $1 AND user_id = $2))",
         )
         .bind(&quest_id)
-        .bind(&username)
+        .bind(&user_id)
         .fetch_one(&self.pool)
         .await
         .unwrap())
@@ -260,21 +260,21 @@ impl ProgressionService for DatabaseProgressionService {
 
     async fn submit_answer(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
-        if self.has_user_completed_quest(username, quest_id).await? {
+        if self.has_user_completed_quest(user_id, quest_id).await? {
             return Ok(None);
         }
         let res = self
             .quest_service
-            .verify_answer(quest_id, username, answer)
+            .verify_answer(quest_id, user_id, answer)
             .await?;
         if Some(true) == res {
-            match sqlx::query("INSERT INTO progression (quest_id, username) VALUES ($1, $2)")
+            match sqlx::query("INSERT INTO progression (quest_id, user_id) VALUES ($1, $2)")
                 .bind(&quest_id)
-                .bind(&username)
+                .bind(&user_id)
                 .execute(&self.pool)
                 .await
             {
@@ -310,12 +310,12 @@ impl BackendProgressionService {
 impl ProgressionService for BackendProgressionService {
     async fn has_user_completed_quest(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
     ) -> Result<bool, Error> {
         let response = self
             .client
-            .get(format!("{}/{}/{}", &self.address, username, quest_id))
+            .get(format!("{}/{}/{}", &self.address, user_id, quest_id))
             .send()
             .await
             .map_err(|_| Error::ServerUnreachable)?;
@@ -333,16 +333,13 @@ impl ProgressionService for BackendProgressionService {
 
     async fn submit_answer(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         let response = self
             .client
-            .post(format!(
-                "{}/{}/{}/answer",
-                &self.address, username, quest_id
-            ))
+            .post(format!("{}/{}/{}/answer", &self.address, user_id, quest_id))
             .body(answer.to_owned())
             .send()
             .await
@@ -385,36 +382,35 @@ impl ProgressionServiceNatsWrapper {
 impl ProgressionService for ProgressionServiceNatsWrapper {
     async fn has_user_completed_quest(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
     ) -> Result<bool, Error> {
         self.progression_service
-            .has_user_completed_quest(username, quest_id)
+            .has_user_completed_quest(user_id, quest_id)
             .await
     }
 
     async fn submit_answer(
         &self,
-        username: &str,
+        user_id: &UserId,
         quest_id: &QuestId,
         answer: &str,
     ) -> Result<Option<bool>, Error> {
         let res = self
             .progression_service
-            .submit_answer(username, quest_id, answer)
+            .submit_answer(user_id, quest_id, answer)
             .await?;
         if let Some(correct) = res {
-            let username = Username::build(username)?;
             self.nats_client
                 .emit(ProgressionEvent::AnswerSubmitted {
-                    username: username.clone(),
+                    user_id: user_id.clone(),
                     correct,
                 })
                 .await?;
             if correct {
                 self.nats_client
                     .emit(ProgressionEvent::QuestCompleted {
-                        username: username,
+                        user_id: user_id.clone(),
                         quest_id: quest_id.clone(),
                     })
                     .await?

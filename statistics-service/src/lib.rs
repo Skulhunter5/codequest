@@ -1,5 +1,5 @@
 use codequest_common::{
-    Credentials, Error, Username, event::ProgressionEvent, nats::NatsClient,
+    Credentials, Error, UserId, event::ProgressionEvent, nats::NatsClient,
     services::StatisticsService, statistics::Metric,
 };
 use reqwest::{Client, StatusCode};
@@ -43,19 +43,19 @@ impl DatabaseStatisticsService {
                     "statistics-service".to_owned(),
                     async move |event| {
                         match event {
-                            ProgressionEvent::AnswerSubmitted { username, correct: _ } => {
-                                sqlx::query("INSERT INTO statistics (username, metric_key, metric_value)
+                            ProgressionEvent::AnswerSubmitted { user_id, correct: _ } => {
+                                sqlx::query("INSERT INTO statistics (user_id, metric_key, metric_value)
                                     VALUES ($1, $2, $3)
-                                    ON CONFLICT (username, metric_key) DO UPDATE SET
+                                    ON CONFLICT (user_id, metric_key) DO UPDATE SET
                                         metric_value = statistics.metric_value + EXCLUDED.metric_value"
-                                ).bind(&username).bind("answers_submitted").bind(1).execute(&pool).await?;
+                                ).bind(&user_id).bind("answers_submitted").bind(1).execute(&pool).await?;
                             }
-                            ProgressionEvent::QuestCompleted { username, quest_id: _ } => {
-                                sqlx::query("INSERT INTO statistics (username, metric_key, metric_value)
+                            ProgressionEvent::QuestCompleted { user_id, quest_id: _ } => {
+                                sqlx::query("INSERT INTO statistics (user_id, metric_key, metric_value)
                                     VALUES ($1, $2, $3)
-                                    ON CONFLICT (username, metric_key) DO UPDATE SET
+                                    ON CONFLICT (user_id, metric_key) DO UPDATE SET
                                         metric_value = statistics.metric_value + EXCLUDED.metric_value"
-                                ).bind(&username).bind("quests_completed").bind(1).execute(&pool).await?;
+                                ).bind(&user_id).bind("quests_completed").bind(1).execute(&pool).await?;
                             }
                         }
                         Ok(())
@@ -73,11 +73,11 @@ impl DatabaseStatisticsService {
 
 #[async_trait]
 impl StatisticsService for DatabaseStatisticsService {
-    async fn get_user_metrics(&self, username: &Username) -> Result<Vec<Metric>, Error> {
+    async fn get_user_metrics(&self, user_id: &UserId) -> Result<Vec<Metric>, Error> {
         let metrics = sqlx::query_as::<_, Metric>(
-            "SELECT metric_key as key, metric_value::TEXT as value FROM statistics WHERE (username = $1)",
+            "SELECT metric_key as key, metric_value::TEXT as value FROM statistics WHERE (user_id = $1)",
         )
-        .bind(username)
+        .bind(user_id)
         .fetch_all(&self.pool)
         .await?;
         Ok(metrics)
@@ -100,10 +100,10 @@ impl BackendStatisticsService {
 
 #[async_trait]
 impl StatisticsService for BackendStatisticsService {
-    async fn get_user_metrics(&self, username: &Username) -> Result<Vec<Metric>, Error> {
+    async fn get_user_metrics(&self, user_id: &UserId) -> Result<Vec<Metric>, Error> {
         let response = self
             .client
-            .get(format!("{}/{}", &self.address, username))
+            .get(format!("{}/{}", &self.address, user_id))
             .send()
             .await
             .map_err(|_| Error::ServerUnreachable)?;

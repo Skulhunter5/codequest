@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::ErrorKind, path::PathBuf, sync::Arc};
 
-use codequest_common::{Error, QuestId};
+use codequest_common::{Error, QuestId, UserId};
 use rocket::{async_trait, tokio::sync::RwLock};
 use tokio::process::Command;
 
@@ -19,15 +19,12 @@ impl QuestContext {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ContextKey {
     quest: QuestId,
-    user: String,
+    user: UserId,
 }
 
 impl ContextKey {
-    pub fn new(quest: QuestId, user: impl Into<String>) -> Self {
-        Self {
-            quest,
-            user: user.into(),
-        }
+    pub fn new(quest: QuestId, user: UserId) -> Self {
+        Self { quest, user }
     }
 }
 
@@ -36,11 +33,15 @@ pub trait QuestContextProvider: Send + Sync {
     async fn get_context(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
     ) -> Result<Option<QuestContext>, Error>;
 
-    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
-        self.get_context(quest_id, username)
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
+        self.get_context(quest_id, user_id)
             .await
             .map(|res| res.map(|context| context.input))
     }
@@ -48,9 +49,9 @@ pub trait QuestContextProvider: Send + Sync {
     async fn get_answer(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
     ) -> Result<Option<String>, Error> {
-        self.get_context(quest_id, username)
+        self.get_context(quest_id, user_id)
             .await
             .map(|res| res.map(|context| context.answer))
     }
@@ -73,10 +74,14 @@ impl QuestContextProvider for QuestContextGenerator {
     async fn get_context(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
     ) -> Result<Option<QuestContext>, Error> {
         let generator_path = self.generator_dir_path.join(quest_id.to_string());
-        let result = match Command::new(generator_path).arg(username).output().await {
+        let result = match Command::new(generator_path)
+            .arg(user_id.to_string())
+            .output()
+            .await
+        {
             Ok(result) => result,
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
@@ -85,7 +90,7 @@ impl QuestContextProvider for QuestContextGenerator {
         if !result.status.success() {
             return Err(Error::QuestContextGeneratorFailed {
                 quest: quest_id.clone(),
-                username: username.to_string(),
+                user: user_id.clone(),
                 exit_status: result.status,
             });
         }
@@ -121,9 +126,9 @@ impl QuestContextProvider for InMemoryQuestContextCache {
     async fn get_context(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
     ) -> Result<Option<QuestContext>, Error> {
-        let key = ContextKey::new(*quest_id, username);
+        let key = ContextKey::new(*quest_id, *user_id);
         if let Some(context) = self.contexts.read().await.get(&key) {
             return Ok(context.clone());
         }
@@ -131,8 +136,12 @@ impl QuestContextProvider for InMemoryQuestContextCache {
         self.fetch_and_cache(key).await
     }
 
-    async fn get_input(&self, quest_id: &QuestId, username: &str) -> Result<Option<String>, Error> {
-        let key = ContextKey::new(*quest_id, username);
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
+        let key = ContextKey::new(*quest_id, *user_id);
         if let Some(context) = self.contexts.read().await.get(&key) {
             return Ok(context.as_ref().map(|context| context.input.clone()));
         }
@@ -146,9 +155,9 @@ impl QuestContextProvider for InMemoryQuestContextCache {
     async fn get_answer(
         &self,
         quest_id: &QuestId,
-        username: &str,
+        user_id: &UserId,
     ) -> Result<Option<String>, Error> {
-        let key = ContextKey::new(*quest_id, username);
+        let key = ContextKey::new(*quest_id, *user_id);
         if let Some(context) = self.contexts.read().await.get(&key) {
             return Ok(context.as_ref().map(|context| context.answer.clone()));
         }

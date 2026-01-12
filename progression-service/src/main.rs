@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, QuestId, load_secret_key,
+    Credentials, Error, QuestId, UserId, load_secret_key,
     services::{ProgressionService, QuestService},
 };
 use codequest_progression_service::{DatabaseProgressionService, ProgressionServiceNatsWrapper};
@@ -18,27 +18,27 @@ mod defaults {
     pub const PORT: u16 = 8000;
 }
 
-#[rocket::get("/<username>/<quest_id>")]
+#[rocket::get("/<user_id>/<quest_id>")]
 async fn has_user_completed_quest(
-    username: &str,
+    user_id: UserId,
     quest_id: QuestId,
     progression_service: &State<Arc<dyn ProgressionService>>,
 ) -> Result<String, Error> {
     progression_service
-        .has_user_completed_quest(username, &quest_id)
+        .has_user_completed_quest(&user_id, &quest_id)
         .await
         .map(|res| res.to_string())
 }
 
-#[rocket::post("/<username>/<quest_id>/answer", data = "<answer>")]
+#[rocket::post("/<user_id>/<quest_id>/answer", data = "<answer>")]
 async fn submit_answer(
     quest_id: QuestId,
-    username: &str,
+    user_id: UserId,
     answer: &str,
     progression_service: &State<Arc<dyn ProgressionService>>,
 ) -> Result<Result<String, status::NotFound<RawText<&'static str>>>, Error> {
     Ok(progression_service
-        .submit_answer(username, &quest_id, answer)
+        .submit_answer(&user_id, &quest_id, answer)
         .await?
         .ok_or_else(|| status::NotFound(RawText("")))
         .map(|answer_was_correct| answer_was_correct.to_string()))
