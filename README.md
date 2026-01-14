@@ -6,7 +6,6 @@ The following programs need to be installed:
 - GNU Make
 - Docker (with compose and buildx support)
     - Docker BuildKit enabled (daemon settings file or DOCKER_BUILDKIT=1)
-- gcc
 
 Build-Dependencies:
 - OpenSSL
