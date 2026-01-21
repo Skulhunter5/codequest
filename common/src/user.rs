@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::Error;
@@ -56,10 +56,12 @@ impl Username {
         let value = value.as_ref();
         (1..=30).contains(&value.len())
             && value.chars().find(|c| !Self::is_valid_char(*c)).is_none()
+            && value.find("  ").is_none()
+            && value == value.trim()
     }
 
     fn is_valid_char(c: char) -> bool {
-        c.is_ascii_alphanumeric() || c == '_' || c == '-'
+        c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' '
     }
 
     pub fn new(value: impl Into<String>) -> Result<Self, Error> {
@@ -97,19 +99,12 @@ impl std::fmt::Display for Username {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(transparent)]
 #[repr(transparent)]
 pub struct UsernameRef<'a>(&'a str);
 
 impl<'a> UsernameRef<'a> {
-    pub fn build(value: &'a str) -> Result<Self, Error> {
-        if !Username::is_valid(&value) {
-            return Err(Error::InvalidUsername(value.to_owned()));
-        }
-        Ok(Self(value))
-    }
-
     pub fn as_str(&self) -> &str {
         self.0
     }
@@ -122,16 +117,6 @@ impl<'a> UsernameRef<'a> {
 impl AsRef<str> for UsernameRef<'_> {
     fn as_ref(&self) -> &str {
         self.as_str()
-    }
-}
-
-impl<'de> Deserialize<'de> for UsernameRef<'de> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value: &str = Deserialize::deserialize(deserializer)?;
-        Self::build(value).map_err(serde::de::Error::custom)
     }
 }
 

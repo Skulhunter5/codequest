@@ -392,7 +392,6 @@ impl BackendUserService {
     }
 }
 
-// TODO: change this to UsernameRef and adjust UsernameRef's validation
 #[derive(Serialize, Deserialize)]
 pub struct LoginRequest<'a> {
     pub username: Username,

@@ -21,11 +21,21 @@
     document.getElementById("login-form").addEventListener("submit", async (e) => {
         e.preventDefault();
 
-        const username_regex = /^[a-zA-Z0-9]{1,30}$/;
+        const username_regex = /^[a-zA-Z0-9 ]{1,30}$/;
 
         if (!username_regex.test(usernameField.value)) {
             const errorBox = document.getElementById("error-box");
-            errorBox.textContent = "Username can only contain letters and digits.";
+            errorBox.textContent = "Username can only contain the following characters: a-z A-Z 0-9 _- and space";
+            errorBox.style.display = "block";
+            return;
+        } else if (usernameField.value.indexOf("  ") != -1) {
+            const errorBox = document.getElementById("error-box");
+            errorBox.textContent = "Username cannot contain multiple consecutive space characters";
+            errorBox.style.display = "block";
+            return;
+        } else if (usernameField.value !== usernameField.value.trim()) {
+            const errorBox = document.getElementById("error-box");
+            errorBox.textContent = "Username cannot start with or end in a space character";
             errorBox.style.display = "block";
             return;
         }

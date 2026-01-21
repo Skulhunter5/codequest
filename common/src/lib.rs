@@ -20,7 +20,7 @@ mod user;
 pub use credentials::Credentials;
 pub use error::Error;
 pub use quest::{Quest, QuestId, QuestItem};
-pub use user::{User, UserId, Username};
+pub use user::{User, UserId, Username, UsernameRef};
 
 pub fn load_salt(path: impl AsRef<Path>) -> io::Result<SaltString> {
     Ok(SaltString::from_b64(fs::read_to_string(path)?.trim()).expect("failed to load salt"))
