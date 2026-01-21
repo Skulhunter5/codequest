@@ -139,7 +139,7 @@ h1 {
 }
 
 .form-box {
-    max-width: 600px;
+    max-width: 350px;
     margin: 2rem auto;
     display: flex;
     flex-direction: column;
@@ -148,6 +148,10 @@ h1 {
     padding: 2rem;
     border-radius: 12px;
     border: 2px solid #2d2d2d;
+}
+
+.form-box-wide {
+    max-width: 600px;
 }
 
 .form-box label {
