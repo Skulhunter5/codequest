@@ -1,11 +1,12 @@
-use std::{io, path::Path, sync::Arc};
+use std::{collections::HashMap, io, path::Path, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Quest, QuestId, QuestItem, UserId, services::QuestService,
+    Credentials, Error, Quest, QuestData, QuestEntry, QuestId, UserId, services::QuestService,
 };
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use tokio::sync::RwLock;
 
 use crate::quest_context::QuestContextProvider;
 
@@ -19,23 +20,27 @@ impl ConstQuestService {
     pub fn new() -> Self {
         let quests = vec![
             Quest::new(
-                QuestId::new(),
                 "Quest 1",
+                None,
+                true,
                 "For this quest, you have to submit '1'",
             ),
             Quest::new(
-                QuestId::new(),
                 "Quest 2",
+                None,
+                true,
                 "For this quest, you have to submit '2'",
             ),
             Quest::new(
-                QuestId::new(),
                 "Quest 3",
+                None,
+                true,
                 "For this quest, you have to submit '3'",
             ),
             Quest::new(
-                QuestId::new(),
                 "Quest 4",
+                None,
+                true,
                 "For this quest, you have to submit '4'",
             ),
         ]
@@ -46,29 +51,21 @@ impl ConstQuestService {
 
 #[async_trait]
 impl QuestService for ConstQuestService {
-    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
+    async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error> {
         Ok(self
             .quests
             .iter()
-            .map(|quest| quest.item.clone())
-            .collect::<Vec<QuestItem>>()
+            .map(|quest| quest.to_entry())
+            .collect::<Vec<QuestEntry>>()
             .into_boxed_slice())
     }
 
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
-        Ok(self
-            .quests
-            .iter()
-            .find(|quest| quest.item.id == *id)
-            .cloned())
+        Ok(self.quests.iter().find(|quest| quest.id == *id).cloned())
     }
 
     async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
-        Ok(self
-            .quests
-            .iter()
-            .find(|quest| quest.item.id == *id)
-            .is_some())
+        Ok(self.quests.iter().find(|quest| quest.id == *id).is_some())
     }
 
     async fn get_input(
@@ -93,16 +90,20 @@ impl QuestService for ConstQuestService {
             None
         })
     }
+
+    async fn create_quest(&self, _quest: QuestData) -> Result<QuestId, Error> {
+        Err(Error::Unsupported)
+    }
 }
 
 pub struct FileQuestService {
-    quests: Box<[Quest]>,
+    quests: RwLock<HashMap<QuestId, Quest>>,
 }
 
 impl FileQuestService {
     pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let path = path.as_ref();
-        let quests = json::from_str(std::fs::read_to_string(&path)?.as_str())?;
+        let quests = RwLock::new(json::from_str(std::fs::read_to_string(&path)?.as_str())?);
         println!(">> quests loaded: {:?}", &quests);
         Ok(Self { quests })
     }
@@ -110,21 +111,19 @@ impl FileQuestService {
 
 #[async_trait]
 impl QuestService for FileQuestService {
-    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
+    async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error> {
         Ok(self
             .quests
-            .iter()
-            .map(|quest| quest.item.clone())
-            .collect::<Vec<QuestItem>>()
+            .read()
+            .await
+            .values()
+            .map(|quest| quest.to_entry())
+            .collect::<Vec<QuestEntry>>()
             .into_boxed_slice())
     }
 
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
-        Ok(self
-            .quests
-            .iter()
-            .find(|quest| quest.item.id == *id)
-            .cloned())
+        Ok(self.quests.read().await.get(id).cloned())
     }
 
     async fn get_input(
@@ -148,6 +147,14 @@ impl QuestService for FileQuestService {
         } else {
             None
         })
+    }
+
+    async fn create_quest(&self, quest: QuestData) -> Result<QuestId, Error> {
+        let quest = Quest::new(quest.name, quest.author, quest.official, quest.text);
+        let id = quest.id;
+        let old_value = self.quests.write().await.insert(id, quest);
+        assert!(old_value.is_none());
+        Ok(id)
     }
 }
 
@@ -188,9 +195,9 @@ impl DatabaseQuestService {
 
 #[async_trait]
 impl QuestService for DatabaseQuestService {
-    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
+    async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error> {
         Ok(
-            sqlx::query_as::<_, QuestItem>("SELECT id, name FROM quests")
+            sqlx::query_as::<_, QuestEntry>("SELECT id, name, author, official FROM quests")
                 .fetch_all(&self.pool)
                 .await?
                 .into_boxed_slice(),
@@ -198,12 +205,12 @@ impl QuestService for DatabaseQuestService {
     }
 
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
-        Ok(
-            sqlx::query_as::<_, Quest>("SELECT id, name, description FROM quests WHERE id = $1")
-                .bind(&id)
-                .fetch_optional(&self.pool)
-                .await?,
+        Ok(sqlx::query_as::<_, Quest>(
+            "SELECT id, name, description, author, official FROM quests WHERE id = $1",
         )
+        .bind(&id)
+        .fetch_optional(&self.pool)
+        .await?)
     }
 
     async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
@@ -231,6 +238,20 @@ impl QuestService for DatabaseQuestService {
     ) -> Result<Option<String>, Error> {
         self.context_provider.get_answer(quest_id, user_id).await
     }
+
+    async fn create_quest(&self, quest: QuestData) -> Result<QuestId, Error> {
+        let id = sqlx::query_scalar::<_, QuestId>(
+            "INSERT INTO quests (name, description, author, official) VALUES ($1, $2, $3, $4) RETURNING id",
+        )
+        .bind(quest.name)
+        .bind(quest.text)
+        .bind(quest.author)
+        .bind(quest.official)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(id)
+    }
 }
 
 pub struct BackendQuestService {
@@ -249,7 +270,7 @@ impl BackendQuestService {
 
 #[async_trait]
 impl QuestService for BackendQuestService {
-    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error> {
+    async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error> {
         let response = self
             .client
             .get(&self.address)
@@ -258,7 +279,7 @@ impl QuestService for BackendQuestService {
             .map_err(|_| Error::ServerUnreachable)?;
         match response.status() {
             StatusCode::OK => response
-                .json::<Box<[QuestItem]>>()
+                .json::<Box<[QuestEntry]>>()
                 .await
                 .map_err(|_| Error::InvalidResponse),
             _ => Err(Error::InvalidResponse),
@@ -348,6 +369,21 @@ impl QuestService for BackendQuestService {
                 Err(_) => Err(Error::InvalidResponse),
             },
             StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn create_quest(&self, quest: QuestData) -> Result<QuestId, Error> {
+        let response = self
+            .client
+            .post(format!("{}", &self.address))
+            .json(&quest)
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::OK => Ok(QuestId::try_parse(response.text().await?)?),
             _ => Err(Error::InvalidResponse),
         }
     }

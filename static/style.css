@@ -22,6 +22,26 @@ nav {
     border-bottom: 2px solid #3c1fa8;
 }
 
+.create-quest-btn {
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    transition: 0.2s;
+    background: #3c1fa8;
+    border: 1px solid #3c1fa8;
+    color: #fff;
+}
+
+.right-hand-menu {
+    position: fixed;
+    top: 8rem;
+    right: 1rem;
+}
+
+.create-quest-btn:hover {
+    background: #5933d4;
+    color: #fff;
+}
+
 nav a {
     color: #cfcfcf;
     text-decoration: none;
@@ -119,7 +139,7 @@ h1 {
 }
 
 .form-box {
-    max-width: 350px;
+    max-width: 600px;
     margin: 2rem auto;
     display: flex;
     flex-direction: column;
@@ -145,6 +165,21 @@ h1 {
 }
 
 .form-box input:focus {
+    outline: none;
+    border-color: #5933d4;
+}
+
+textarea {
+    padding: 0.6rem;
+    border-radius: 6px;
+    border: 1px solid #444;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    font-family: inherit;
+    resize: vertical;
+}
+
+textarea:focus {
     outline: none;
     border-color: #5933d4;
 }

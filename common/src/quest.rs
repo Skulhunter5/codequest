@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::{Error, UserId};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow, sqlx::Type)]
 #[sqlx(transparent)]
 #[repr(transparent)]
@@ -10,6 +12,10 @@ pub struct QuestId(Uuid);
 impl QuestId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
+    }
+
+    pub fn try_parse(input: impl AsRef<str>) -> Result<Self, Error> {
+        Ok(Self(Uuid::try_parse(input.as_ref())?))
     }
 }
 
@@ -28,34 +34,83 @@ impl<'r> rocket::request::FromParam<'r> for QuestId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
-pub struct QuestItem {
+pub struct QuestEntry {
     pub id: QuestId,
     pub name: String,
+    pub author: Option<UserId>,
+    pub official: bool,
 }
 
-impl QuestItem {
-    pub fn new<S: AsRef<str>>(id: QuestId, name: S) -> Self {
+impl QuestEntry {
+    pub fn new(name: impl Into<String>, author: Option<UserId>, official: bool) -> Self {
         Self {
-            id,
-            name: name.as_ref().to_owned(),
+            id: QuestId::new(),
+            name: name.into(),
+            author,
+            official,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
 pub struct Quest {
-    #[serde(flatten)]
-    #[sqlx(flatten)]
-    pub item: QuestItem,
+    pub id: QuestId,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<UserId>,
+    pub official: bool,
     #[sqlx(rename = "description")]
     pub text: String,
 }
 
 impl Quest {
-    pub fn new<S: AsRef<str>>(name: QuestId, id: S, text: S) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        author: Option<UserId>,
+        official: bool,
+        text: impl Into<String>,
+    ) -> Self {
         Self {
-            item: QuestItem::new(name, id),
-            text: text.as_ref().to_owned(),
+            id: QuestId::new(),
+            name: name.into(),
+            author,
+            official,
+            text: text.into(),
+        }
+    }
+
+    pub fn to_entry(&self) -> QuestEntry {
+        QuestEntry {
+            id: self.id,
+            name: self.name.clone(),
+            author: self.author,
+            official: self.official,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
+pub struct QuestData {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<UserId>,
+    pub official: bool,
+    #[sqlx(rename = "description")]
+    pub text: String,
+}
+
+impl QuestData {
+    pub fn new(
+        name: impl Into<String>,
+        author: Option<UserId>,
+        official: bool,
+        text: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            author,
+            official,
+            text: text.into(),
         }
     }
 }

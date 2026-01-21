@@ -8,6 +8,12 @@
             <a class="card" href="{{uri}}">{{name}}</a>
         {{/each}}
     </div>
+
+    {{#if user}}
+        <div class="right-hand-menu">
+            <a href="/quests/create" class="create-quest-btn">Create Quest</a>
+        </div>
+    {{/if}}
 {{/inline}}
 
 {{> base user=user active-quests=true }}

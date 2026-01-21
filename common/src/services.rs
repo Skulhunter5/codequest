@@ -1,6 +1,8 @@
 use rocket::async_trait;
 
-use crate::{Error, Quest, QuestId, QuestItem, User, UserId, Username, statistics::Metric};
+use crate::{
+    Error, Quest, QuestData, QuestEntry, QuestId, User, UserId, Username, statistics::Metric,
+};
 
 #[async_trait]
 pub trait UserService: Send + Sync {
@@ -24,7 +26,7 @@ pub trait UserService: Send + Sync {
 
 #[async_trait]
 pub trait QuestService: Send + Sync {
-    async fn list_quests(&self) -> Result<Box<[QuestItem]>, Error>;
+    async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error>;
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error>;
 
     async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
@@ -54,7 +56,7 @@ pub trait QuestService: Send + Sync {
             .map(|correct_answer| answer == correct_answer))
     }
 
-    async fn create_quest(&self, author: Option<&UserId>) -> Result<Option<QuestId>, Error>;
+    async fn create_quest(&self, quest: QuestData) -> Result<QuestId, Error>;
 }
 
 #[async_trait]

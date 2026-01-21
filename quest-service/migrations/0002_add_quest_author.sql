@@ -1,2 +1,4 @@
 ALTER TABLE quests
 ADD author UUID;
+ALTER TABLE quests
+ADD official BOOLEAN NOT NULL DEFAULT false;

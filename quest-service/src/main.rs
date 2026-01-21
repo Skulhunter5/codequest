@@ -1,7 +1,8 @@
 use std::{env, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Quest, QuestId, QuestItem, UserId, load_secret_key, services::QuestService,
+    Credentials, Error, Quest, QuestData, QuestEntry, QuestId, UserId, load_secret_key,
+    services::QuestService,
 };
 use codequest_quest_service::{
     DatabaseQuestService,
@@ -26,7 +27,7 @@ mod defaults {
 #[rocket::get("/")]
 async fn list_quests(
     quest_service: &State<Arc<dyn QuestService>>,
-) -> Result<Json<Box<[QuestItem]>>, Error> {
+) -> Result<Json<Box<[QuestEntry]>>, Error> {
     quest_service.list_quests().await.map(|quests| Json(quests))
 }
 
@@ -80,6 +81,17 @@ async fn verify_answer(
         .ok_or(status::NotFound(RawText(""))))
 }
 
+#[rocket::post("/", data = "<data>")]
+async fn create_quest(
+    data: Json<QuestData>,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<String, Error> {
+    quest_service
+        .create_quest(data.0)
+        .await
+        .map(|quest_id| quest_id.to_string())
+}
+
 #[rocket::catch(default)]
 fn catch_all() -> &'static str {
     ""
@@ -130,7 +142,14 @@ async fn main() -> Result<(), rocket::Error> {
         .register("/", catchers![catch_all])
         .mount(
             "/quest",
-            routes![list_quests, get_quest, get_input, get_answer, verify_answer],
+            routes![
+                list_quests,
+                get_quest,
+                get_input,
+                get_answer,
+                verify_answer,
+                create_quest
+            ],
         )
         .manage(Arc::new(quest_service) as Arc<dyn QuestService>)
         .launch()

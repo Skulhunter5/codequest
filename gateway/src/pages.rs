@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use codequest_common::{
-    Error, QuestId, QuestItem,
+    Error, QuestData, QuestEntry, QuestId,
     services::{ProgressionService, QuestService, StatisticsService},
 };
 use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirect};
@@ -107,8 +107,8 @@ pub async fn quests(
     ))
 }
 
-impl<'a> From<&'a QuestItem> for QuestContext<'a> {
-    fn from(quest: &'a QuestItem) -> Self {
+impl<'a> From<&'a QuestEntry> for QuestContext<'a> {
+    fn from(quest: &'a QuestEntry) -> Self {
         Self {
             name: &quest.name,
             uri: format!("/quest/{}", &quest.id),
@@ -141,8 +141,8 @@ pub async fn quest(
                             &user,
                             context! {
                                 quest: context! {
-                                    name: &quest.item.name,
-                                    id: &quest.item.id,
+                                    name: &quest.name,
+                                    id: &quest.id,
                                     text: &quest.text,
                                     answer: &quest_answer,
                                 },
@@ -156,8 +156,8 @@ pub async fn quest(
                             &user,
                             context! {
                                 quest: context! {
-                                    name: &quest.item.name,
-                                    id: &quest.item.id,
+                                    name: &quest.name,
+                                    id: &quest.id,
                                     text: &quest.text,
                                 },
                             },
@@ -169,6 +169,32 @@ pub async fn quest(
             Err(http::Status::NotFound)
         },
     )
+}
+
+#[rocket::get("/quests/create")]
+pub async fn create_quest_page(user: AuthUser) -> Template {
+    Template::render("create-quest", PageContext::new(&Some(user), context! {}))
+}
+
+#[derive(FromForm)]
+pub(crate) struct CreateQuestForm<'a> {
+    name: &'a str,
+    text: &'a str,
+}
+
+#[rocket::post("/quests", data = "<form>")]
+pub async fn create_quest_form(
+    form: Form<CreateQuestForm<'_>>,
+    user: AuthUser,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Redirect, Error> {
+    let author = Some(user.id);
+    let official = false;
+    let quest = QuestData::new(form.name, author, official, form.text);
+    quest_service
+        .create_quest(quest)
+        .await
+        .map(|quest_id| Redirect::to(format!("/quest/{}", quest_id)))
 }
 
 #[rocket::get("/quest/<quest_id>/input")]
@@ -190,7 +216,7 @@ pub async fn quest_input(
 
 #[derive(FromForm)]
 pub(crate) struct AnswerForm<'a> {
-    pub(crate) answer: &'a str,
+    answer: &'a str,
 }
 
 #[rocket::post("/quest/<quest_id>/answer", data = "<form>")]
@@ -217,8 +243,8 @@ pub async fn quest_answer(
                     context! {
                         answer_was_correct,
                         quest: context! {
-                            name: &quest.item.name,
-                            id: &quest.item.id,
+                            name: &quest.name,
+                            id: &quest.id,
                         },
                     },
                 ),
