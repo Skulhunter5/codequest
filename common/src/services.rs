@@ -53,6 +53,8 @@ pub trait QuestService: Send + Sync {
             .await?
             .map(|correct_answer| answer == correct_answer))
     }
+
+    async fn create_quest(&self, author: Option<&UserId>) -> Result<Option<QuestId>, Error>;
 }
 
 #[async_trait]

@@ -1,0 +1,15 @@
+{{#*inline "title"}}Create Quest - CodeQuest{{/inline}}
+
+{{#*inline "body"}}
+    <h1>Create Quest</h1>
+
+    <form method="POST" action="/quests">
+        <label>Name</label>
+        <input type="text" name="name"></input>
+        <label>Text</label>
+        <textarea name="text" rows="10"></textarea>
+        <button type="submit" class="submit-btn">Create</button>
+    </form>
+{{/inline}}
+
+{{> base user=user }}

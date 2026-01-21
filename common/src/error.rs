@@ -6,6 +6,7 @@ use crate::{QuestId, UserId};
 
 #[derive(Debug)]
 pub enum Error {
+    Unsupported,
     InvalidResponse,
     ServerUnreachable,
     IncoherentState,
