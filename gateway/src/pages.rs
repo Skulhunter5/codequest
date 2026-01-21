@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use codequest_common::{
     Error, QuestData, QuestEntry, QuestId,
-    services::{ProgressionService, QuestService, StatisticsService},
+    services::{ProgressionService, QuestService, StatisticsService, UserService},
 };
 use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirect};
 use rocket_dyn_templates::{Template, context};
@@ -120,55 +120,53 @@ impl<'a> From<&'a QuestEntry> for QuestContext<'a> {
 pub async fn quest(
     quest_id: QuestId,
     user: Option<AuthUser>,
+    user_service: &State<Arc<dyn UserService>>,
     quest_service: &State<Arc<dyn QuestService>>,
     progression_service: &State<Arc<dyn ProgressionService>>,
 ) -> Result<Result<Template, http::Status>, Error> {
-    Ok(
-        if let Some(quest) = quest_service.get_quest(&quest_id).await? {
-            Ok(
-                if let Some(present_user) = &user
-                    && progression_service
-                        .has_user_completed_quest(&present_user.id, &quest_id)
-                        .await?
-                {
-                    let quest_answer = quest_service
-                        .get_answer(&quest_id, &present_user.id)
-                        .await?
-                        .ok_or(Error::IncoherentState)?;
-                    Template::render(
-                        "quest",
-                        PageContext::new(
-                            &user,
-                            context! {
-                                quest: context! {
-                                    name: &quest.name,
-                                    id: &quest.id,
-                                    text: &quest.text,
-                                    answer: &quest_answer,
-                                },
-                            },
-                        ),
-                    )
-                } else {
-                    Template::render(
-                        "quest",
-                        PageContext::new(
-                            &user,
-                            context! {
-                                quest: context! {
-                                    name: &quest.name,
-                                    id: &quest.id,
-                                    text: &quest.text,
-                                },
-                            },
-                        ),
-                    )
-                },
-            )
+    let Some(quest) = quest_service.get_quest(&quest_id).await? else {
+        return Ok(Err(http::Status::NotFound));
+    };
+
+    let author = if let Some(author_id) = &quest.author {
+        if let Some(author) = user_service.get_user(author_id).await? {
+            Some(author.username)
         } else {
-            Err(http::Status::NotFound)
-        },
-    )
+            None
+        }
+    } else {
+        None
+    };
+    let (quest_completed, quest_answer) = if let Some(user) = &user {
+        let quest_completed = progression_service
+            .has_user_completed_quest(&user.id, &quest_id)
+            .await?;
+        let quest_answer = if quest_completed {
+            quest_service.get_answer(&quest_id, &user.id).await?
+        } else {
+            None
+        };
+        (quest_completed, quest_answer)
+    } else {
+        (false, None)
+    };
+
+    Ok(Ok(Template::render(
+        "quest",
+        PageContext::new(
+            &user,
+            context! {
+                quest: context! {
+                    name: &quest.name,
+                    id: &quest.id,
+                    author,
+                    text: &quest.text,
+                    completed: quest_completed,
+                    answer: quest_answer,
+                },
+            },
+        ),
+    )))
 }
 
 #[rocket::get("/quests/create")]

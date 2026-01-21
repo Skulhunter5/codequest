@@ -1,13 +1,42 @@
 {{#*inline "title"}}{{quest.name}} - CodeQuest{{/inline}}
 
 {{#*inline "body"}}
-    <h1>{{quest.name}}</h1>
+    <style>
+        #page-heading {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        #page-heading * {
+            margin: 0;
+        }
+        #page-heading h1 {
+            color: #a084ff;
+            margin-bottom: 0.2rem;
+        }
+        #page-heading h3 {
+            color: #fff;
+        }
+        #page-heading h3 span {
+            color: #eee;
+            font-weight: normal;
+        }
+    </style>
+    <div id="page-heading">
+        <h1>{{quest.name}}</h1>
+        {{#if quest.author}}
+            <h3><span>by </span>{{quest.author}}</h3>
+        {{/if}}
+    </div>
 
     <p>{{quest.text}}</p>
     <br>
     {{#if user}}
-        {{#if quest.answer}}
-            <p>You successfully completed this quest. Your answer was <strong>{{quest.answer}}</strong>.</p>
+        {{#if quest.completed}}
+            {{#if quest.answer}}
+                <p>You have already completed this quest. Your answer was <strong>{{quest.answer}}</strong>.</p>
+            {{else}}
+                <p>You have already completed this quest.</p>
+            {{/if}}
             <p>Even though you're done with this quest, you can still get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> again.</p>
         {{else}}
             <p>Get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> for this quest!</p>
