@@ -87,15 +87,21 @@ impl Quest {
             official: self.official,
         }
     }
+
+    pub fn is_author(&self, user: &UserId) -> bool {
+        let Some(author) = &self.author else {
+            return false;
+        };
+        author == user
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct QuestData {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<UserId>,
     pub official: bool,
-    #[sqlx(rename = "description")]
     pub text: String,
 }
 
@@ -112,5 +118,71 @@ impl QuestData {
             official,
             text: text.into(),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PartialQuestData {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<Option<UserId>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub official: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+impl PartialQuestData {
+    pub fn new() -> Self {
+        Self {
+            name: None,
+            author: None,
+            official: None,
+            text: None,
+        }
+    }
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        return self;
+    }
+
+    pub fn with_author(mut self, author: Option<UserId>) -> Self {
+        self.author = Some(author);
+        return self;
+    }
+
+    pub fn with_official(mut self, official: bool) -> Self {
+        self.official = Some(official);
+        return self;
+    }
+
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
+        return self;
+    }
+
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.name = Some(name.into());
+    }
+
+    pub fn set_author(&mut self, author: Option<UserId>) {
+        self.author = Some(author);
+    }
+
+    pub fn set_official(&mut self, official: bool) {
+        self.official = Some(official);
+    }
+
+    pub fn set_text(&mut self, text: impl Into<String>) {
+        self.text = Some(text.into());
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none()
+            && self.author.is_none()
+            && self.official.is_none()
+            && self.text.is_none()
     }
 }

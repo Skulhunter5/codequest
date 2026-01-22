@@ -1,12 +1,14 @@
 use std::{path::Path, sync::Arc};
 
 use codequest_common::{
-    Error, QuestData, QuestEntry, QuestId,
+    Error, PartialQuestData, QuestData, QuestEntry, QuestId,
     services::{ProgressionService, QuestService, StatisticsService, UserService},
 };
-use rocket::{FromForm, State, form::Form, fs::NamedFile, http, response::Redirect};
+use rocket::{
+    FromForm, State, form::Form, fs::NamedFile, http, response::Redirect, serde::json::Json,
+};
 use rocket_dyn_templates::{Template, context};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::account::AuthUser;
 
@@ -111,12 +113,12 @@ impl<'a> From<&'a QuestEntry> for QuestContext<'a> {
     fn from(quest: &'a QuestEntry) -> Self {
         Self {
             name: &quest.name,
-            uri: format!("/quest/{}", &quest.id),
+            uri: format!("/quests/{}", &quest.id),
         }
     }
 }
 
-#[rocket::get("/quest/<quest_id>")]
+#[rocket::get("/quests/<quest_id>")]
 pub async fn quest(
     quest_id: QuestId,
     user: Option<AuthUser>,
@@ -188,14 +190,119 @@ pub async fn create_quest_form(
 ) -> Result<Redirect, Error> {
     let author = Some(user.id);
     let official = false;
-    let quest = QuestData::new(form.name, author, official, form.text);
+    let quest = QuestData::new(form.name, author, official, form.text.replace("\r\n", "\n"));
     quest_service
         .create_quest(quest)
         .await
-        .map(|quest_id| Redirect::to(format!("/quest/{}", quest_id)))
+        .map(|quest_id| Redirect::to(format!("/quests/{}", quest_id)))
 }
 
-#[rocket::get("/quest/<quest_id>/input")]
+#[rocket::get("/quests/<id>/edit")]
+pub async fn edit_quest_page(
+    id: QuestId,
+    user: AuthUser,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Result<Template, http::Status>, Error> {
+    if let Some(quest) = quest_service.get_quest(&id).await? {
+        if let Some(author) = quest.author {
+            if author == user.id {
+                return Ok(Ok(Template::render(
+                    "edit-quest",
+                    PageContext::new(
+                        &Some(user),
+                        context! {
+                            quest: context! {
+                                id: &quest.id,
+                                name: &quest.name,
+                                text_json: rocket::serde::json::serde_json::to_string(&quest.text)?,
+                            },
+                        },
+                    ),
+                )));
+            }
+        }
+        return Ok(Err(http::Status::Forbidden));
+    } else {
+        return Ok(Err(http::Status::NotFound));
+    }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ModifyQuestRequest<'a> {
+    name: Option<&'a str>,
+    text: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ModifyQuestResponse {
+    success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl ModifyQuestResponse {
+    fn success(redirect: impl Into<String>) -> Self {
+        Self {
+            success: true,
+            redirect: Some(redirect.into()),
+            error: None,
+        }
+    }
+
+    fn error(error: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            redirect: None,
+            error: Some(error.into()),
+        }
+    }
+}
+
+#[rocket::patch("/quests/<id>", data = "<request>")]
+pub async fn modify_quest(
+    id: QuestId,
+    request: Json<ModifyQuestRequest<'_>>,
+    user: AuthUser,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<(http::Status, Json<ModifyQuestResponse>), Error> {
+    let Some(quest) = quest_service.get_quest(&id).await? else {
+        return Ok((
+            http::Status::NotFound,
+            Json(ModifyQuestResponse::error("Quest doesn't exist.")),
+        ));
+    };
+    if !quest.is_author(&user.id) {
+        return Ok((
+            http::Status::Forbidden,
+            Json(ModifyQuestResponse::error(
+                "You are not the author of this quest.",
+            )),
+        ));
+    }
+
+    let request = request.0;
+    let mut quest_data = PartialQuestData::new();
+    if let Some(name) = request.name {
+        quest_data.set_name(name);
+    }
+    if let Some(text) = request.text {
+        quest_data.set_text(text);
+    }
+    Ok(match quest_service.modify_quest(&id, quest_data).await? {
+        true => (
+            http::Status::Ok,
+            Json(ModifyQuestResponse::success(format!("/quests/{}", id))),
+        ),
+        false => (
+            http::Status::NotFound,
+            Json(ModifyQuestResponse::error("Quest doesn't exist.")),
+        ),
+    })
+}
+
+#[rocket::get("/quests/<quest_id>/input")]
 pub async fn quest_input(
     quest_id: QuestId,
     user: Option<AuthUser>,
@@ -217,7 +324,7 @@ pub(crate) struct AnswerForm<'a> {
     answer: &'a str,
 }
 
-#[rocket::post("/quest/<quest_id>/answer", data = "<form>")]
+#[rocket::post("/quests/<quest_id>/answer", data = "<form>")]
 pub async fn quest_answer(
     form: Form<AnswerForm<'_>>,
     quest_id: QuestId,

@@ -66,6 +66,8 @@ async fn main() -> Result<(), rocket::Error> {
                 pages::quests,
                 pages::create_quest_page,
                 pages::create_quest_form,
+                pages::edit_quest_page,
+                pages::modify_quest,
                 pages::quest,
                 pages::quest_input,
                 pages::quest_answer,

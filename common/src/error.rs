@@ -7,6 +7,7 @@ use crate::{QuestId, UserId};
 #[derive(Debug)]
 pub enum Error {
     Unsupported,
+    BadRequest,
     InvalidResponse,
     ServerUnreachable,
     IncoherentState,
@@ -88,7 +89,9 @@ impl<'r> Responder<'r, 'static> for Error {
         Response::build()
             .status(match self {
                 Self::InvalidUsername(_) => http::Status::BadRequest,
+                Self::BadRequest => http::Status::BadRequest,
                 Self::Unauthorized => http::Status::Unauthorized,
+                Self::Unsupported => http::Status::NotImplemented,
                 _ => http::Status::InternalServerError,
             })
             .ok()

@@ -1,8 +1,8 @@
 use std::{env, sync::Arc};
 
 use codequest_common::{
-    Credentials, Error, Quest, QuestData, QuestEntry, QuestId, UserId, load_secret_key,
-    services::QuestService,
+    Credentials, Error, PartialQuestData, Quest, QuestData, QuestEntry, QuestId, UserId,
+    load_secret_key, services::QuestService,
 };
 use codequest_quest_service::{
     DatabaseQuestService,
@@ -92,6 +92,30 @@ async fn create_quest(
         .map(|quest_id| quest_id.to_string())
 }
 
+#[rocket::put("/<id>", data = "<data>")]
+async fn update_quest(
+    id: QuestId,
+    data: Json<QuestData>,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Result<status::NoContent, status::NotFound<()>>, Error> {
+    Ok(match quest_service.update_quest(&id, data.0).await? {
+        true => Ok(status::NoContent),
+        false => Err(status::NotFound(())),
+    })
+}
+
+#[rocket::patch("/<id>", data = "<data>")]
+async fn modify_quest(
+    id: QuestId,
+    data: Json<PartialQuestData>,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Result<status::NoContent, status::NotFound<()>>, Error> {
+    Ok(match quest_service.modify_quest(&id, data.0).await? {
+        true => Ok(status::NoContent),
+        false => Err(status::NotFound(())),
+    })
+}
+
 #[rocket::catch(default)]
 fn catch_all() -> &'static str {
     ""
@@ -141,14 +165,16 @@ async fn main() -> Result<(), rocket::Error> {
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])
         .mount(
-            "/quest",
+            "/quests",
             routes![
                 list_quests,
                 get_quest,
                 get_input,
                 get_answer,
                 verify_answer,
-                create_quest
+                create_quest,
+                update_quest,
+                modify_quest,
             ],
         )
         .manage(Arc::new(quest_service) as Arc<dyn QuestService>)

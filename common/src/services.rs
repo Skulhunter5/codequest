@@ -1,7 +1,8 @@
 use rocket::async_trait;
 
 use crate::{
-    Error, Quest, QuestData, QuestEntry, QuestId, User, UserId, Username, statistics::Metric,
+    Error, PartialQuestData, Quest, QuestData, QuestEntry, QuestId, User, UserId, Username,
+    statistics::Metric,
 };
 
 #[async_trait]
@@ -57,6 +58,8 @@ pub trait QuestService: Send + Sync {
     }
 
     async fn create_quest(&self, quest: QuestData) -> Result<QuestId, Error>;
+    async fn update_quest(&self, id: &QuestId, data: QuestData) -> Result<bool, Error>;
+    async fn modify_quest(&self, id: &QuestId, data: PartialQuestData) -> Result<bool, Error>;
 }
 
 #[async_trait]

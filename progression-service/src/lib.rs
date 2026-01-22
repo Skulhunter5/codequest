@@ -168,7 +168,7 @@ impl ProgressionService for FileProgressionService {
         if Some(true) == res {
             if let Err(e) = self.save().await {
                 eprintln!(
-                    "FileUserService: failed to write user_progress to file: {}",
+                    "FileProgressionService: failed to write user_progress to file: {}",
                     e
                 );
             }

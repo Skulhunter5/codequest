@@ -1,0 +1,83 @@
+{{#*inline "title"}}Edit Quest - CodeQuest{{/inline}}
+
+{{#*inline "body"}}
+    <h1>Edit Quest</h1>
+
+    <form autocomplete="off" id="edit-quest-form" method="POST" action="/quests/{{quest.id}}" class="form-box form-box-wide" style="margin: auto;">
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" name="name" value="{{quest.name}}" id="name-field" required>
+        </div>
+
+        <div class="form-group">
+            <label>Text</label>
+            <textarea name="text" rows="30" id="text-field"></textarea>
+        </div>
+
+        <button type="submit" class="submit-btn">Save</button>
+
+        <div id="error-box" class="error" style="display: none; margin-top: 10px;"></div>
+    </form>
+
+    <script>
+        const originalQuest = {
+            name: "{{{quest.name}}}",
+            text: {{{quest.text_json}}}
+        };
+
+        const errorBox = document.getElementById('error-box');
+
+        document.getElementById("text-field").value = originalQuest.text;
+        document.getElementById("edit-quest-form").addEventListener("submit", async (e) => {
+            event.preventDefault();
+
+            const formData = new FormData(document.getElementById("edit-quest-form"));
+            const currentQuest = {
+                name: formData.get('name'),
+                text: formData.get('text').replace("\r\n", "\n")
+            };
+
+            const changedFields = {};
+            if (currentQuest.name !== originalQuest.name) {
+                changedFields.name = currentQuest.name;
+            }
+            if (currentQuest.text !== originalQuest.text) {
+                changedFields.text = currentQuest.text;
+            }
+
+            if (Object.keys(changedFields).length === 0) {
+                errorBox.textContent = 'You have not changed anything.';
+                errorBox.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch('/quests/{{quest.id}}', {
+                    method: 'PATCH',
+                    credentials: "include",
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(changedFields)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    window.location.href = data.redirect;
+                    return;
+                } else {
+                    errorBox.textContent = data.error || "Unknown error.";
+                    errorBox.style.display = "block";
+                    return;
+                }
+            } catch (error) {
+                errorBox.textContent = 'An unexpected error occurred.';
+                errorBox.style.display = 'block';
+                return;
+            }
+        });
+    </script>
+{{/inline}}
+
+{{> base user=user }}

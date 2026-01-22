@@ -335,7 +335,7 @@ impl UserService for DatabaseUserService {
             0 => Ok(false),
             1 => Ok(true),
             x => unreachable!(
-                "SQL 'DELETE FROM users' query is constrained by primary key (user_id) but multiple rows ({}) were affected",
+                "SQL 'DELETE FROM users' query is constrained by primary key (id) but multiple rows ({}) were affected",
                 x
             ),
         }
@@ -362,7 +362,7 @@ impl UserService for DatabaseUserService {
             0 => Ok(false),
             1 => Ok(true),
             x => unreachable!(
-                "SQL 'UPDATE users' query is constrained by primary key (username) but multiple rows ({}) were affected",
+                "SQL 'UPDATE users' query is constrained by primary key (id) but multiple rows ({}) were affected",
                 x
             ),
         }

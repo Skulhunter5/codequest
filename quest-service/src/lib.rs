@@ -1,12 +1,18 @@
-use std::{collections::HashMap, io, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use codequest_common::{
-    Credentials, Error, Quest, QuestData, QuestEntry, QuestId, UserId, services::QuestService,
+    Credentials, Error, PartialQuestData, Quest, QuestData, QuestEntry, QuestId, UserId,
+    services::QuestService,
 };
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
-use sqlx::{PgPool, postgres::PgPoolOptions};
-use tokio::sync::RwLock;
+use sqlx::{PgPool, QueryBuilder, postgres::PgPoolOptions};
+use tokio::{fs::File as TokioFile, io::AsyncWriteExt as _, sync::RwLock};
 
 use crate::quest_context::QuestContextProvider;
 
@@ -94,23 +100,36 @@ impl QuestService for ConstQuestService {
     async fn create_quest(&self, _quest: QuestData) -> Result<QuestId, Error> {
         Err(Error::Unsupported)
     }
+
+    async fn update_quest(&self, _id: &QuestId, _data: QuestData) -> Result<bool, Error> {
+        Err(Error::Unsupported)
+    }
+
+    async fn modify_quest(&self, _id: &QuestId, _data: PartialQuestData) -> Result<bool, Error> {
+        Err(Error::Unsupported)
+    }
 }
 
-pub struct FileQuestService {
+pub struct InMemoryQuestService {
     quests: RwLock<HashMap<QuestId, Quest>>,
 }
 
-impl FileQuestService {
-    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        let path = path.as_ref();
-        let quests = RwLock::new(json::from_str(std::fs::read_to_string(&path)?.as_str())?);
-        println!(">> quests loaded: {:?}", &quests);
-        Ok(Self { quests })
+impl InMemoryQuestService {
+    pub fn new() -> io::Result<Self> {
+        Ok(Self {
+            quests: RwLock::new(HashMap::new()),
+        })
+    }
+
+    pub fn with(quests: HashMap<QuestId, Quest>) -> Self {
+        Self {
+            quests: RwLock::new(quests),
+        }
     }
 }
 
 #[async_trait]
-impl QuestService for FileQuestService {
+impl QuestService for InMemoryQuestService {
     async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error> {
         Ok(self
             .quests
@@ -155,6 +174,130 @@ impl QuestService for FileQuestService {
         let old_value = self.quests.write().await.insert(id, quest);
         assert!(old_value.is_none());
         Ok(id)
+    }
+
+    async fn update_quest(&self, id: &QuestId, data: QuestData) -> Result<bool, Error> {
+        let quests = &mut self.quests.write().await;
+        let Some(quest) = quests.get_mut(id) else {
+            return Ok(false);
+        };
+        quest.name = data.name;
+        quest.author = data.author;
+        quest.official = data.official;
+        quest.text = data.text;
+        Ok(true)
+    }
+
+    async fn modify_quest(&self, id: &QuestId, data: PartialQuestData) -> Result<bool, Error> {
+        if data.is_empty() {
+            return Err(Error::BadRequest);
+        }
+
+        let quests = &mut self.quests.write().await;
+        let Some(quest) = quests.get_mut(id) else {
+            return Ok(false);
+        };
+        if let Some(name) = data.name {
+            quest.name = name;
+        }
+        if let Some(author) = data.author {
+            quest.author = author;
+        }
+        if let Some(official) = data.official {
+            quest.official = official;
+        }
+        if let Some(text) = data.text {
+            quest.text = text;
+        }
+        Ok(true)
+    }
+}
+
+pub struct FileQuestService {
+    path: PathBuf,
+    in_memory_quest_service: InMemoryQuestService,
+}
+
+impl FileQuestService {
+    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let quests: HashMap<QuestId, Quest> =
+            json::from_str(std::fs::read_to_string(&path)?.as_str())?;
+        println!("{} quest(s) loaded", quests.len());
+
+        let in_memory_quest_service = InMemoryQuestService::with(quests);
+
+        Ok(Self {
+            path,
+            in_memory_quest_service,
+        })
+    }
+
+    async fn save(&self) -> Result<(), std::io::Error> {
+        let mut file = TokioFile::create(&self.path).await?;
+
+        let quests = self.in_memory_quest_service.quests.read().await;
+        let json_string = json::to_string(&*quests)?;
+        file.write_all(json_string.as_bytes()).await
+    }
+}
+
+#[async_trait]
+impl QuestService for FileQuestService {
+    async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error> {
+        self.in_memory_quest_service.list_quests().await
+    }
+
+    async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
+        self.in_memory_quest_service.get_quest(id).await
+    }
+
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
+        self.in_memory_quest_service
+            .get_input(quest_id, user_id)
+            .await
+    }
+
+    async fn get_answer(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
+        self.in_memory_quest_service
+            .get_answer(quest_id, user_id)
+            .await
+    }
+
+    async fn create_quest(&self, quest: QuestData) -> Result<QuestId, Error> {
+        let quest_id = self.in_memory_quest_service.create_quest(quest).await?;
+        if let Err(e) = self.save().await {
+            eprintln!("FileQuestService: failed to write quests to file: {}", e);
+        }
+        return Ok(quest_id);
+    }
+
+    async fn update_quest(&self, id: &QuestId, data: QuestData) -> Result<bool, Error> {
+        let quest_updated = self.in_memory_quest_service.update_quest(id, data).await?;
+        if quest_updated {
+            if let Err(e) = self.save().await {
+                eprintln!("FileQuestService: failed to write quests to file: {}", e);
+            }
+        }
+        return Ok(quest_updated);
+    }
+
+    async fn modify_quest(&self, id: &QuestId, data: PartialQuestData) -> Result<bool, Error> {
+        let quest_modified = self.in_memory_quest_service.modify_quest(id, data).await?;
+        if quest_modified {
+            if let Err(e) = self.save().await {
+                eprintln!("FileQuestService: failed to write quests to file: {}", e);
+            }
+        }
+        return Ok(quest_modified);
     }
 }
 
@@ -251,6 +394,62 @@ impl QuestService for DatabaseQuestService {
         .await?;
 
         Ok(id)
+    }
+
+    async fn update_quest(&self, id: &QuestId, data: QuestData) -> Result<bool, Error> {
+        let res = sqlx::query(
+            "UPDATE quests SET name = $2, author = $3, official = $4, description = $5 WHERE (id = $1)",
+        )
+        .bind(id)
+        .bind(data.name)
+        .bind(data.author)
+        .bind(data.official)
+        .bind(data.text)
+        .execute(&self.pool)
+        .await?;
+        match res.rows_affected() {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => unreachable!(
+                "SQL 'UPDATE quests' query is constrained by primary key (id) but multiple rows ({}) were affected",
+                x
+            ),
+        }
+    }
+
+    async fn modify_quest(&self, id: &QuestId, data: PartialQuestData) -> Result<bool, Error> {
+        if data.is_empty() {
+            return Err(Error::BadRequest);
+        }
+
+        let mut query_builder = QueryBuilder::new("UPDATE quests SET ");
+        let mut separated = query_builder.separated(", ");
+        if let Some(name) = data.name {
+            separated.push("name = ").push_bind_unseparated(name);
+        }
+        if let Some(author) = data.author {
+            separated.push("author = ").push_bind_unseparated(author);
+        }
+        if let Some(official) = data.official {
+            separated
+                .push("official = ")
+                .push_bind_unseparated(official);
+        }
+        if let Some(text) = data.text {
+            separated.push("description = ").push_bind_unseparated(text);
+        }
+        query_builder.push(" WHERE id = ").push_bind(id);
+        let query = query_builder.build();
+
+        let res = query.execute(&self.pool).await?;
+        match res.rows_affected() {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => unreachable!(
+                "SQL 'UPDATE quests' query is constrained by primary key (id) but multiple rows ({}) were affected",
+                x
+            ),
+        }
     }
 }
 
@@ -384,6 +583,39 @@ impl QuestService for BackendQuestService {
 
         match response.status() {
             StatusCode::OK => Ok(QuestId::try_parse(response.text().await?)?),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn update_quest(&self, id: &QuestId, data: QuestData) -> Result<bool, Error> {
+        let response = self
+            .client
+            .put(format!("{}/{}", &self.address, id))
+            .json(&data)
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::NO_CONTENT => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    async fn modify_quest(&self, id: &QuestId, data: PartialQuestData) -> Result<bool, Error> {
+        let response = self
+            .client
+            .patch(format!("{}/{}", &self.address, id))
+            .json(&data)
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+
+        match response.status() {
+            StatusCode::NO_CONTENT => Ok(true),
+            StatusCode::NOT_FOUND => Ok(false),
+            StatusCode::BAD_REQUEST => Err(Error::BadRequest),
             _ => Err(Error::InvalidResponse),
         }
     }

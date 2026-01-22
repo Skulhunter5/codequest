@@ -37,11 +37,11 @@
             {{else}}
                 <p>You have already completed this quest.</p>
             {{/if}}
-            <p>Even though you're done with this quest, you can still get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> again.</p>
+            <p>Even though you're done with this quest, you can still get <a href="/quests/{{quest.id}}/input" target="_blank">your input</a> again.</p>
         {{else}}
-            <p>Get <a href="/quest/{{quest.id}}/input" target="_blank">your input</a> for this quest!</p>
+            <p>Get <a href="/quests/{{quest.id}}/input" target="_blank">your input</a> for this quest!</p>
             <br>
-            <form method="POST" action="/quest/{{quest.id}}/answer">
+            <form method="POST" action="/quests/{{quest.id}}/answer">
                 <label>Answer</label>
                 <input type="text" name="answer"></input>
                 <button type="submit" class="submit-btn">Submit</button>

@@ -19,7 +19,7 @@ mod user;
 
 pub use credentials::Credentials;
 pub use error::Error;
-pub use quest::{Quest, QuestData, QuestEntry, QuestId};
+pub use quest::{PartialQuestData, Quest, QuestData, QuestEntry, QuestId};
 pub use user::{User, UserId, Username, UsernameRef};
 
 pub fn load_salt(path: impl AsRef<Path>) -> io::Result<SaltString> {
