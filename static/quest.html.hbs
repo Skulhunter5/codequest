@@ -50,6 +50,12 @@
     {{else}}
         <p><a href="/login">Log In</a> to attempt completing this quest.</p>
     {{/if}}
+
+    {{#if user_is_quest_author}}
+        <div class="right-hand-menu">
+            <a href="/quests/{{quest.id}}/edit" class="edit-quest-btn">Edit Quest</a>
+        </div>
+    {{/if}}
 {{/inline}}
 
 {{> base user=user }}

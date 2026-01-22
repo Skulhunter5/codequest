@@ -130,6 +130,8 @@ pub async fn quest(
         return Ok(Err(http::Status::NotFound));
     };
 
+    let user_is_quest_author = user.as_ref().is_some_and(|user| quest.is_author(&user.id));
+
     let author = if let Some(author_id) = &quest.author {
         if let Some(author) = user_service.get_user(author_id).await? {
             Some(author.username)
@@ -166,6 +168,7 @@ pub async fn quest(
                     completed: quest_completed,
                     answer: quest_answer,
                 },
+                user_is_quest_author,
             },
         ),
     )))
