@@ -134,7 +134,7 @@ pub struct PartialQuestData {
 }
 
 impl PartialQuestData {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
             name: None,
             author: None,
@@ -184,5 +184,60 @@ impl PartialQuestData {
             && self.author.is_none()
             && self.official.is_none()
             && self.text.is_none()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct QuestDataFields {
+    pub name: bool,
+    pub author: bool,
+    pub official: bool,
+    pub text: bool,
+}
+
+impl QuestDataFields {
+    pub fn none() -> Self {
+        Self {
+            name: false,
+            author: false,
+            official: false,
+            text: false,
+        }
+    }
+
+    pub fn name() -> Self {
+        Self::none().and_name()
+    }
+
+    pub fn author() -> Self {
+        Self::none().and_author()
+    }
+
+    pub fn official() -> Self {
+        Self::none().and_author()
+    }
+
+    pub fn text() -> Self {
+        Self::none().and_author()
+    }
+
+    pub fn and_name(mut self) -> Self {
+        self.name = true;
+        return self;
+    }
+
+    pub fn and_author(mut self) -> Self {
+        self.author = true;
+        return self;
+    }
+
+    pub fn and_official(mut self) -> Self {
+        self.official = true;
+        return self;
+    }
+
+    pub fn and_text(mut self) -> Self {
+        self.text = true;
+        return self;
     }
 }

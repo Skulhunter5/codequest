@@ -7,7 +7,7 @@ use std::{
 
 use codequest_common::{
     Credentials, Error, PartialQuestData, Quest, QuestData, QuestEntry, QuestId, UserId,
-    services::QuestService,
+    event::QuestEvent, nats::NatsClient, services::QuestService,
 };
 use reqwest::{Client, StatusCode};
 use rocket::{async_trait, serde::json};
@@ -68,6 +68,14 @@ impl QuestService for ConstQuestService {
 
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
         Ok(self.quests.iter().find(|quest| quest.id == *id).cloned())
+    }
+
+    async fn get_quest_author(&self, id: &QuestId) -> Result<Option<Option<UserId>>, Error> {
+        Ok(self
+            .quests
+            .iter()
+            .find(|quest| quest.id == *id)
+            .map(|quest| quest.author.clone()))
     }
 
     async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
@@ -143,6 +151,15 @@ impl QuestService for InMemoryQuestService {
 
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
         Ok(self.quests.read().await.get(id).cloned())
+    }
+
+    async fn get_quest_author(&self, id: &QuestId) -> Result<Option<Option<UserId>>, Error> {
+        Ok(self
+            .quests
+            .read()
+            .await
+            .get(id)
+            .map(|quest| quest.author.clone()))
     }
 
     async fn get_input(
@@ -252,6 +269,10 @@ impl QuestService for FileQuestService {
         self.in_memory_quest_service.get_quest(id).await
     }
 
+    async fn get_quest_author(&self, id: &QuestId) -> Result<Option<Option<UserId>>, Error> {
+        self.in_memory_quest_service.get_quest_author(id).await
+    }
+
     async fn get_input(
         &self,
         quest_id: &QuestId,
@@ -354,6 +375,15 @@ impl QuestService for DatabaseQuestService {
         .bind(&id)
         .fetch_optional(&self.pool)
         .await?)
+    }
+
+    async fn get_quest_author(&self, id: &QuestId) -> Result<Option<Option<UserId>>, Error> {
+        Ok(
+            sqlx::query_scalar::<_, Option<UserId>>("SELECT author FROM quests WHERE id = $1")
+                .bind(&id)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
@@ -502,6 +532,23 @@ impl QuestService for BackendQuestService {
         }
     }
 
+    async fn get_quest_author(&self, id: &QuestId) -> Result<Option<Option<UserId>>, Error> {
+        let response = self
+            .client
+            .get(format!("{}/{}/author", &self.address, id))
+            .send()
+            .await
+            .map_err(|_| Error::ServerUnreachable)?;
+        match response.status() {
+            StatusCode::OK => match response.json().await {
+                Ok(author) => Ok(Some(author)),
+                Err(_) => Err(Error::ServerUnreachable),
+            },
+            StatusCode::NOT_FOUND => Ok(None),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
     async fn get_input(
         &self,
         quest_id: &QuestId,
@@ -618,5 +665,95 @@ impl QuestService for BackendQuestService {
             StatusCode::BAD_REQUEST => Err(Error::BadRequest),
             _ => Err(Error::InvalidResponse),
         }
+    }
+}
+
+pub struct QuestServiceNatsWrapper {
+    quest_service: Arc<dyn QuestService>,
+    nats_client: NatsClient,
+}
+
+impl QuestServiceNatsWrapper {
+    pub async fn new(
+        quest_service: Arc<dyn QuestService>,
+        nats_address: impl AsRef<str>,
+    ) -> Result<Self, Error> {
+        let nats_client = NatsClient::new(nats_address).await?;
+        Ok(Self {
+            quest_service,
+            nats_client,
+        })
+    }
+}
+
+#[async_trait]
+impl QuestService for QuestServiceNatsWrapper {
+    async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error> {
+        self.quest_service.list_quests().await
+    }
+
+    async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error> {
+        self.quest_service.get_quest(id).await
+    }
+
+    async fn get_quest_author(&self, id: &QuestId) -> Result<Option<Option<UserId>>, Error> {
+        self.quest_service.get_quest_author(id).await
+    }
+
+    async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
+        self.quest_service.quest_exists(id).await
+    }
+
+    async fn get_input(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
+        self.quest_service.get_input(quest_id, user_id).await
+    }
+
+    async fn get_answer(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+    ) -> Result<Option<String>, Error> {
+        self.quest_service.get_answer(quest_id, user_id).await
+    }
+
+    async fn verify_answer(
+        &self,
+        quest_id: &QuestId,
+        user_id: &UserId,
+        answer: &str,
+    ) -> Result<Option<bool>, Error> {
+        self.quest_service
+            .verify_answer(quest_id, user_id, answer)
+            .await
+    }
+
+    async fn create_quest(&self, quest: QuestData) -> Result<QuestId, Error> {
+        let quest_id = self.quest_service.create_quest(quest).await?;
+        self.nats_client.emit(QuestEvent::Created(quest_id)).await?;
+        return Ok(quest_id);
+    }
+
+    async fn update_quest(&self, id: &QuestId, data: QuestData) -> Result<bool, Error> {
+        let quest_modified = self.quest_service.update_quest(id, data).await?;
+        if quest_modified {
+            self.nats_client
+                .emit(QuestEvent::Modified(id.clone()))
+                .await?;
+        }
+        return Ok(quest_modified);
+    }
+
+    async fn modify_quest(&self, id: &QuestId, data: PartialQuestData) -> Result<bool, Error> {
+        let quest_modified = self.quest_service.modify_quest(id, data).await?;
+        if quest_modified {
+            self.nats_client
+                .emit(QuestEvent::Modified(id.clone()))
+                .await?;
+        }
+        return Ok(quest_modified);
     }
 }

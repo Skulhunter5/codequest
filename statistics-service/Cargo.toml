@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 codequest-common = { path = "../common/" }
+codequest-quest-service = { path = "../quest-service/" }
 rocket = { workspace = true, features = ["json"] }
 reqwest = { workspace = true, features = ["json"] }
 sqlx = { workspace = true }

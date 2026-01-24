@@ -94,6 +94,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - DB_ADDRESS=codequest-postgres:5432
+      - NATS_ADDRESS=codequest-nats:4222
       - DB_USERNAME_QUEST_SERVICE=${DB_USERNAME_QUEST_SERVICE}
       - DB_PASSWORD_QUEST_SERVICE=${DB_PASSWORD_QUEST_SERVICE}
       - SECRET_KEY_FILE=/run/secrets/secret_key
@@ -130,6 +131,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - DB_ADDRESS=codequest-postgres:5432
       - NATS_ADDRESS=codequest-nats:4222
+      - QUEST_SERVICE_ADDRESS=http://codequest-quest-service:8000/quests
       - DB_USERNAME_STATISTICS_SERVICE=${DB_USERNAME_STATISTICS_SERVICE}
       - DB_PASSWORD_STATISTICS_SERVICE=${DB_PASSWORD_STATISTICS_SERVICE}
       - SECRET_KEY_FILE=/run/secrets/secret_key

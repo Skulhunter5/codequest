@@ -286,7 +286,7 @@ pub async fn modify_quest(
     }
 
     let request = request.0;
-    let mut quest_data = PartialQuestData::new();
+    let mut quest_data = PartialQuestData::empty();
     if let Some(name) = request.name {
         quest_data.set_name(name);
     }

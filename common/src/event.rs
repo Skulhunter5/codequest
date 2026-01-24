@@ -22,6 +22,23 @@ impl Event for UserEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QuestEvent {
+    Created(QuestId),
+    Modified(QuestId),
+    Deleted(QuestId),
+}
+
+impl Event for QuestEvent {
+    fn get_subject(&self) -> &'static str {
+        match self {
+            Self::Created(_) => "quest.events.created",
+            Self::Modified(_) => "quest.events.modified",
+            Self::Deleted(_) => "quest.events.deleted",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProgressionEvent {
     AnswerSubmitted { user_id: UserId, correct: bool },
     QuestCompleted { user_id: UserId, quest_id: QuestId },

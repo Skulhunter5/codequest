@@ -29,6 +29,11 @@ pub trait UserService: Send + Sync {
 pub trait QuestService: Send + Sync {
     async fn list_quests(&self) -> Result<Box<[QuestEntry]>, Error>;
     async fn get_quest(&self, id: &QuestId) -> Result<Option<Quest>, Error>;
+    async fn get_quest_author(&self, id: &QuestId) -> Result<Option<Option<UserId>>, Error> {
+        self.get_quest(id)
+            .await
+            .map(|res| res.map(|quest| quest.author))
+    }
 
     async fn quest_exists(&self, id: &QuestId) -> Result<bool, Error> {
         Ok(self.get_quest(&id).await?.is_some())

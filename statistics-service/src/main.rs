@@ -3,6 +3,7 @@ use std::{env, sync::Arc};
 use codequest_common::{
     Credentials, Error, UserId, load_secret_key, services::StatisticsService, statistics::Metric,
 };
+use codequest_quest_service::BackendQuestService;
 use codequest_statistics_service::DatabaseStatisticsService;
 use dotenv::dotenv;
 use rocket::{State, catchers, routes, serde::json::Json};
@@ -60,10 +61,20 @@ async fn main() -> Result<(), rocket::Error> {
         .merge(("secret_key", secret_key))
         .merge(("port", port));
 
-    let statistics_service =
-        DatabaseStatisticsService::new(&db_address, &db_name, db_credentials, nats_address)
-            .await
-            .expect("failed to start DatabaseStatisticsService");
+    let quest_service_address =
+        env::var("QUEST_SERVICE_ADDRESS").expect("QUEST_SERVICE_ADDRESS not set");
+
+    let quest_service = BackendQuestService::new(quest_service_address);
+
+    let statistics_service = DatabaseStatisticsService::new(
+        &db_address,
+        &db_name,
+        db_credentials,
+        nats_address,
+        Arc::new(quest_service),
+    )
+    .await
+    .expect("failed to start DatabaseStatisticsService");
 
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])

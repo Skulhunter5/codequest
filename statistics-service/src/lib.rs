@@ -1,10 +1,34 @@
+use std::sync::Arc;
+
 use codequest_common::{
-    Credentials, Error, UserId, event::ProgressionEvent, nats::NatsClient,
-    services::StatisticsService, statistics::Metric,
+    Credentials, Error, UserId,
+    event::{ProgressionEvent, QuestEvent},
+    nats::NatsClient,
+    services::{QuestService, StatisticsService},
+    statistics::Metric,
 };
 use reqwest::{Client, StatusCode};
 use rocket::async_trait;
 use sqlx::{PgPool, postgres::PgPoolOptions};
+
+async fn stat_plus_one(
+    stat: &str,
+    user_id: &UserId,
+    pool: &sqlx::Pool<sqlx::Postgres>,
+) -> Result<(), Error> {
+    sqlx::query(
+        "INSERT INTO statistics (user_id, metric_key, metric_value)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (user_id, metric_key) DO UPDATE SET
+                    metric_value = statistics.metric_value + EXCLUDED.metric_value",
+    )
+    .bind(user_id)
+    .bind(stat)
+    .bind(1)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
 
 pub struct DatabaseStatisticsService {
     pool: PgPool,
@@ -16,7 +40,10 @@ impl DatabaseStatisticsService {
         db_name: S,
         credentials: Credentials,
         nats_address: impl AsRef<str>,
+        quest_service: Arc<dyn QuestService>,
     ) -> Result<Self, Error> {
+        let nats_address = nats_address.as_ref();
+
         let pool = PgPoolOptions::new()
             .max_connections(20)
             .connect(
@@ -30,40 +57,89 @@ impl DatabaseStatisticsService {
                 .as_str(),
             )
             .await?;
-        let pool2 = pool.clone();
 
-        let nats_client = NatsClient::new(nats_address).await?;
-
-        let _join_handle = rocket::tokio::spawn(async move {
-            println!("NATS event worker started");
-            let pool = pool2;
-            let _x = nats_client
-                .consume::<ProgressionEvent>(
-                    "PROGRESSION_EVENTS",
-                    "statistics-service".to_owned(),
-                    async move |event| {
-                        match event {
-                            ProgressionEvent::AnswerSubmitted { user_id, correct: _ } => {
-                                sqlx::query("INSERT INTO statistics (user_id, metric_key, metric_value)
-                                    VALUES ($1, $2, $3)
-                                    ON CONFLICT (user_id, metric_key) DO UPDATE SET
-                                        metric_value = statistics.metric_value + EXCLUDED.metric_value"
-                                ).bind(&user_id).bind("answers_submitted").bind(1).execute(&pool).await?;
+        let _join_handle = {
+            let pool = pool.clone();
+            let nats_client = NatsClient::new(nats_address).await?;
+            rocket::tokio::spawn(async move {
+                println!("NATS event worker started: ProgressionEvents");
+                let _x = nats_client
+                    .consume::<ProgressionEvent>(
+                        "PROGRESSION_EVENTS",
+                        "statistics-service".to_owned(),
+                        async move |event| {
+                            match event {
+                                ProgressionEvent::AnswerSubmitted {
+                                    user_id,
+                                    correct: _,
+                                } => stat_plus_one("answers_submitted", &user_id, &pool).await?,
+                                ProgressionEvent::QuestCompleted {
+                                    user_id,
+                                    quest_id: _,
+                                } => stat_plus_one("quests_completed", &user_id, &pool).await?,
                             }
-                            ProgressionEvent::QuestCompleted { user_id, quest_id: _ } => {
-                                sqlx::query("INSERT INTO statistics (user_id, metric_key, metric_value)
-                                    VALUES ($1, $2, $3)
-                                    ON CONFLICT (user_id, metric_key) DO UPDATE SET
-                                        metric_value = statistics.metric_value + EXCLUDED.metric_value"
-                                ).bind(&user_id).bind("quests_completed").bind(1).execute(&pool).await?;
+                            Ok(())
+                        },
+                    )
+                    .await
+                    .expect("NATS event worker crashed: ProgressionEvents");
+            })
+        };
+
+        let (tx, mut rx) = rocket::tokio::sync::mpsc::unbounded_channel::<QuestEvent>();
+        let _join_handle = {
+            let nats_client = NatsClient::new(nats_address).await?;
+            rocket::tokio::spawn(async move {
+                println!("NATS event worker started: QuestEvents 1");
+                let _x = nats_client
+                    .consume::<QuestEvent>(
+                        "QUEST_EVENTS",
+                        "statistics-service".to_owned(),
+                        async move |event| {
+                            tx.send(event).unwrap();
+                            Ok(())
+                        },
+                    )
+                    .await
+                    .expect("NATS event worker crashed: QuestEvents 1");
+            })
+        };
+        let _join_handle = {
+            let pool = pool.clone();
+            rocket::tokio::spawn(async move {
+                println!("NATS event worker started: QuestEvents 2");
+                async move {
+                    while let Some(event) = rx.recv().await {
+                        match event {
+                            QuestEvent::Created(quest_id) => {
+                                if let Some(Some(author)) =
+                                    quest_service.get_quest_author(&quest_id).await?
+                                {
+                                    stat_plus_one("quests_created", &author, &pool).await?;
+                                }
+                            }
+                            QuestEvent::Modified(quest_id) => {
+                                if let Some(Some(author)) =
+                                    quest_service.get_quest_author(&quest_id).await?
+                                {
+                                    stat_plus_one("quests_modified", &author, &pool).await?;
+                                }
+                            }
+                            QuestEvent::Deleted(quest_id) => {
+                                if let Some(Some(author)) =
+                                    quest_service.get_quest_author(&quest_id).await?
+                                {
+                                    stat_plus_one("quests_deleted", &author, &pool).await?;
+                                }
                             }
                         }
-                        Ok(())
-                    },
-                )
+                    }
+                    Result::<(), Error>::Ok(())
+                }
                 .await
-                .expect("NATS event worker crashed");
-        });
+                .expect("NATS event worker crashed: QuestEvents 2");
+            })
+        };
 
         sqlx::migrate!().run(&pool).await?;
 

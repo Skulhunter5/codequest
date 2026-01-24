@@ -5,7 +5,7 @@ use codequest_common::{
     load_secret_key, services::QuestService,
 };
 use codequest_quest_service::{
-    DatabaseQuestService,
+    DatabaseQuestService, QuestServiceNatsWrapper,
     quest_context::{InMemoryQuestContextCache, QuestContextGenerator},
 };
 use dotenv::dotenv;
@@ -38,6 +38,18 @@ async fn get_quest(
 ) -> Result<Result<Json<Quest>, status::NotFound<RawJson<&'static str>>>, Error> {
     Ok(quest_service
         .get_quest(&id)
+        .await?
+        .map(|quest| Json(quest))
+        .ok_or(status::NotFound(RawJson(""))))
+}
+
+#[rocket::get("/<id>/author")]
+async fn get_quest_author(
+    id: QuestId,
+    quest_service: &State<Arc<dyn QuestService>>,
+) -> Result<Result<Json<Option<UserId>>, status::NotFound<RawJson<&'static str>>>, Error> {
+    Ok(quest_service
+        .get_quest_author(&id)
         .await?
         .map(|quest| Json(quest))
         .ok_or(status::NotFound(RawJson(""))))
@@ -135,6 +147,8 @@ async fn main() -> Result<(), rocket::Error> {
     let db_name = env::var("POSTGRES_DB").expect("POSTGRES_DB not set");
     let db_address = env::var("DB_ADDRESS").expect("DB_ADDRESS not set");
 
+    let nats_address = env::var("NATS_ADDRESS").expect("NATS_ADDRESS not set");
+
     let secret_key = load_secret_key(
         env::var("SECRET_KEY_FILE").unwrap_or_else(|_| defaults::SECRET_KEY_FILE.to_owned()),
     )
@@ -161,6 +175,9 @@ async fn main() -> Result<(), rocket::Error> {
     )
     .await
     .expect("failed to start DatabaseQuestService");
+    let quest_service = QuestServiceNatsWrapper::new(Arc::new(quest_service), nats_address)
+        .await
+        .expect("failed to start nats wrapper");
 
     rocket::custom(&rocket_config)
         .register("/", catchers![catch_all])
@@ -169,6 +186,7 @@ async fn main() -> Result<(), rocket::Error> {
             routes![
                 list_quests,
                 get_quest,
+                get_quest_author,
                 get_input,
                 get_answer,
                 verify_answer,
